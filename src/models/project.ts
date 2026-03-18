@@ -4,6 +4,9 @@ export type PipelineStage = 'specify' | 'clarify' | 'plan' | 'tasks'
 export interface Project {
   id: string
   name: string
+  description: string
+  repoUrl: string
+  localPath: string
   createdAt: string
   updatedAt: string
   currentStage: PipelineStage
@@ -15,6 +18,9 @@ export function createProject(name: string): Project {
   return {
     id: crypto.randomUUID(),
     name,
+    description: '',
+    repoUrl: '',
+    localPath: '',
     createdAt: now,
     updatedAt: now,
     currentStage: 'specify',
