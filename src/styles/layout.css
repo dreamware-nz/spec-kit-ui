@@ -42,8 +42,12 @@ body {
 .content-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   overflow: hidden;
+}
+
+.content-body.preview-open {
+  grid-template-columns: 1fr 1fr;
 }
 
 .editor-pane, .preview-pane {
@@ -52,8 +56,13 @@ body {
 }
 
 .preview-pane {
+  display: none;
   border-left: 1px solid var(--color-border);
   background: var(--color-surface);
+}
+
+.content-body.preview-open .preview-pane {
+  display: block;
 }
 
 .splitter {

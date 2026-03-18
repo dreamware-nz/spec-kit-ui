@@ -83,12 +83,14 @@ export function renderContentPanel(container: HTMLElement): void {
     rightPane.style.overflow = 'auto'
     rightPane.style.padding = 'var(--space-4)'
     rightPane.style.borderLeft = '1px solid var(--color-border)'
+    rightPane.style.display = 'none'
 
     if (artifact.type === 'spec') {
-      // T029: Render as section cards
+      // T029: Render as section cards — right pane shown when a card is selected
       renderSpecSections(leftPane, rightPane, artifact)
     } else {
-      // Non-spec: CodeMirror editor + preview
+      // Non-spec: CodeMirror editor + preview — show both panes
+      rightPane.style.display = ''
       renderRawEditor(leftPane, rightPane, artifact)
     }
 
@@ -201,8 +203,12 @@ function renderSpecSections(
 
     markDirty(artifact.id)
 
-    // Debounced preview update
-    updatePreviewDebounced(rightPane, newContent)
+    // Debounced preview update — show only the edited section
+    const section = sections[index]
+    if (section && rightPane.style.display !== 'none') {
+      const sectionMd = '#'.repeat(section.headingLevel) + ' ' + section.title + '\n\n' + content
+      updatePreviewDebounced(rightPane, sectionMd)
+    }
   }
 
   // T044: Track drag state for user story reordering
@@ -214,11 +220,19 @@ function renderSpecSections(
     const headerEl = card.querySelector('.section-card-header') as HTMLElement
     if (headerEl) {
       headerEl.addEventListener('click', () => {
-        // Accordion: when expanding, collapse all others
-        if (!card.classList.contains('expanded')) {
-          // The section-card click handler will add 'expanded' after this event
-          // We need to collapse others proactively
+        const isExpanding = !card.classList.contains('expanded')
+        if (isExpanding) {
+          // Accordion: collapse others, show preview for this section
           setTimeout(() => collapseAllExcept(card), 0)
+          const section = sections[sectionIndex]
+          if (section) {
+            const sectionMd = '#'.repeat(section.headingLevel) + ' ' + section.title + '\n\n' + section.content
+            updatePreview(rightPane, sectionMd)
+            rightPane.style.display = ''
+          }
+        } else {
+          // Collapsing — hide preview
+          rightPane.style.display = 'none'
         }
       })
     }
