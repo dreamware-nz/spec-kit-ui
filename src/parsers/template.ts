@@ -6,6 +6,10 @@ const SPEC_TEMPLATE = `# Feature Specification: [FEATURE NAME]
 **Created**: [DATE]
 **Status**: Draft
 
+## Overview
+
+[A concise summary of what is being built and why. What problem does this solve? Who is it for? What is the core value proposition? A reader should understand the purpose and scope of this feature after reading this section.]
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - [Brief Title] (Priority: P1)
@@ -121,5 +125,6 @@ export function scaffoldSpecFromIdea(idea: string): string {
   return SPEC_TEMPLATE
     .replace('[FEATURE NAME]', idea.slice(0, 60))
     .replace('[DATE]', date)
+    .replace('[A concise summary of what is being built and why. What problem does this solve? Who is it for? What is the core value proposition? A reader should understand the purpose and scope of this feature after reading this section.]', idea)
     .replace('[Describe this user journey in plain language]', idea)
 }

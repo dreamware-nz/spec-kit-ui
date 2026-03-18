@@ -59,6 +59,7 @@ You have a conversation with the user about what they want to build. As you disc
 
 The spec has these sections (include only those that are relevant):
 
+- **Overview**: A concise summary of what is being built and why — the problem it solves, who it's for, and the core value proposition. This should be the FIRST section you populate, immediately after the user describes their idea. A reader should understand the purpose and scope after reading just this section.
 - **User Scenarios & Testing**: User stories with Given/When/Then acceptance scenarios, prioritized P1-P4
 - **Edge Cases**: Boundary conditions and error scenarios
 - **System Behaviors**: Reactive rules — "When X happens, the system MUST Y" (SB-### format). Look for: side effects, time-triggered actions, external event reactions, threshold breaches
