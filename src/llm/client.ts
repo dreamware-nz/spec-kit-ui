@@ -7,7 +7,7 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
   try {
     const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
     await client.messages.create({
-      model: 'claude-sonnet-4-5-latest',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1,
       messages: [{ role: 'user', content: 'hi' }],
     })
