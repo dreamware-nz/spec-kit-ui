@@ -41,19 +41,27 @@ export function renderSectionCard(
   // Chevron
   const chevron = document.createElement('span')
   chevron.className = 'section-card-chevron'
+  chevron.setAttribute('aria-hidden', 'true')
   chevron.textContent = '\u25B6'
   header.appendChild(chevron)
 
-  // Completion indicator
+  // Completion indicator — T059: accessible label alongside color
   const indicator = document.createElement('span')
   indicator.className = 'section-card-indicator'
   if (!section.content || section.content.trim().length === 0) {
     indicator.classList.add('section-card-indicator--empty')
+    indicator.setAttribute('aria-label', 'Empty')
+    indicator.setAttribute('title', 'Empty')
   } else if (section.content.trim().length > 20) {
     indicator.classList.add('section-card-indicator--complete')
+    indicator.setAttribute('aria-label', 'Complete')
+    indicator.setAttribute('title', 'Complete')
   } else {
     indicator.classList.add('section-card-indicator--draft')
+    indicator.setAttribute('aria-label', 'Draft')
+    indicator.setAttribute('title', 'Draft')
   }
+  indicator.setAttribute('role', 'img')
   header.appendChild(indicator)
 
   // Title
@@ -70,38 +78,51 @@ export function renderSectionCard(
   body.setAttribute('role', 'region')
   body.setAttribute('aria-label', section.title)
 
-  // T045: Choose structured editor or textarea based on section title
-  if (isInvariantSection(section.title)) {
-    const editor = renderInvariantEditor(section, (_data: StructuredData) => {
-      onUpdate(index, section.content)
-    })
-    body.appendChild(editor)
-  } else if (isLifecycleSection(section.title)) {
-    const editor = renderLifecycleEditor(section, (_data: StructuredData) => {
-      onUpdate(index, section.content)
-    })
-    body.appendChild(editor)
-  } else if (isBehaviorSection(section.title)) {
-    const editor = renderBehaviorEditor(section, (_data: StructuredData) => {
-      onUpdate(index, section.content)
-    })
-    body.appendChild(editor)
-  } else if (isDesignLanguageSection(section.title)) {
-    const editor = renderDesignLanguageEditor(section, (_content: string) => {
-      onUpdate(index, section.content)
-    })
-    body.appendChild(editor)
-  } else {
-    const textarea = document.createElement('textarea')
-    textarea.className = 'textarea'
-    textarea.value = section.content
-    textarea.rows = 8
+  let bodyRendered = false
 
-    textarea.addEventListener('input', () => {
-      onUpdate(index, textarea.value)
-    })
+  /** T062: Lazy render — only populate body content when first expanded */
+  function ensureBodyContent(): void {
+    if (bodyRendered) return
+    bodyRendered = true
 
-    body.appendChild(textarea)
+    // T045: Choose structured editor or textarea based on section title
+    if (isInvariantSection(section.title)) {
+      const editor = renderInvariantEditor(section, (_data: StructuredData) => {
+        onUpdate(index, section.content)
+      })
+      body.appendChild(editor)
+    } else if (isLifecycleSection(section.title)) {
+      const editor = renderLifecycleEditor(section, (_data: StructuredData) => {
+        onUpdate(index, section.content)
+      })
+      body.appendChild(editor)
+    } else if (isBehaviorSection(section.title)) {
+      const editor = renderBehaviorEditor(section, (_data: StructuredData) => {
+        onUpdate(index, section.content)
+      })
+      body.appendChild(editor)
+    } else if (isDesignLanguageSection(section.title)) {
+      const editor = renderDesignLanguageEditor(section, (_content: string) => {
+        onUpdate(index, section.content)
+      })
+      body.appendChild(editor)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.className = 'textarea'
+      textarea.value = section.content
+      textarea.rows = 8
+
+      textarea.addEventListener('input', () => {
+        onUpdate(index, textarea.value)
+      })
+
+      body.appendChild(textarea)
+    }
+  }
+
+  // If already expanded on initial render, populate body immediately
+  if (!section.collapsed) {
+    ensureBodyContent()
   }
 
   card.appendChild(body)
@@ -112,6 +133,7 @@ export function renderSectionCard(
     card.classList.toggle('expanded')
     header.setAttribute('aria-expanded', String(!section.collapsed))
     if (!section.collapsed) {
+      ensureBodyContent()
       const firstInput = body.querySelector<HTMLElement>('textarea, input, select')
       if (firstInput) firstInput.focus()
     }

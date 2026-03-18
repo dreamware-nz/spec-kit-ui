@@ -137,6 +137,7 @@ export function renderSidebar(container: HTMLElement): void {
     deleteBtn.className = 'sidebar-project-delete'
     deleteBtn.textContent = '\u00d7'
     deleteBtn.title = `Delete ${project.name}`
+    deleteBtn.setAttribute('aria-label', `Delete ${project.name}`)
     deleteBtn.style.border = 'none'
     deleteBtn.style.background = 'none'
     deleteBtn.style.color = 'var(--color-text-secondary)'
@@ -417,12 +418,19 @@ export function renderSidebar(container: HTMLElement): void {
     const completion = getStageCompletion(projectArtifacts, stage)
     const dot = document.createElement('span')
     dot.className = 'pipeline-dot'
+    dot.setAttribute('role', 'img')
     if (completion.completed === completion.total && completion.total > 0) {
       dot.classList.add('pipeline-dot--complete')
+      dot.setAttribute('aria-label', 'Complete')
+      dot.setAttribute('title', 'Complete')
     } else if (completion.inProgress > 0 || completion.completed > 0) {
       dot.classList.add('pipeline-dot--partial')
+      dot.setAttribute('aria-label', 'In progress')
+      dot.setAttribute('title', 'In progress')
     } else {
       dot.classList.add('pipeline-dot--none')
+      dot.setAttribute('aria-label', 'Not started')
+      dot.setAttribute('title', 'Not started')
     }
     btn.appendChild(dot)
 
