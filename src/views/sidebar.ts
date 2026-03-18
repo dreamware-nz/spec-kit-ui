@@ -9,6 +9,7 @@ import { deriveFeatureName } from './feature-tabs'
 import { isSectionFilled } from '../parsers/coverage'
 import { switchChatToFeature, handleStageTransition } from './chat'
 import { parseMarkdownSections } from '../parsers/spec-parser'
+import { exportSpecAsPdf } from './pdf-export'
 import type { Project, PipelineStage } from '../models/project'
 import type { ArtifactType, Artifact } from '../models/artifact'
 
@@ -201,6 +202,29 @@ export function renderSidebar(container: HTMLElement): void {
           await performStageTransition(nextStage, currentProject)
         })
         container.appendChild(moveBtn)
+      }
+
+      // PDF export button — available after specify stage
+      if (['clarify', 'plan', 'tasks'].includes(state.currentStage)) {
+        const pdfExportBtn = document.createElement('button')
+        pdfExportBtn.className = 'btn'
+        pdfExportBtn.style.width = '100%'
+        pdfExportBtn.style.marginTop = 'var(--space-1)'
+        pdfExportBtn.textContent = 'Download Spec PDF'
+        pdfExportBtn.addEventListener('click', () => {
+          // Find spec artifact for current feature
+          const specArtifact = [...state.artifacts.values()].find(
+            a => a.id === state.currentArtifactId && a.type === 'spec'
+          ) || [...state.artifacts.values()].find(
+            a => a.projectId === state.currentProjectId && a.type === 'spec'
+          )
+          if (specArtifact) {
+            exportSpecAsPdf(specArtifact.content, currentProject.name)
+          } else {
+            addToast('No spec found to export', 'error')
+          }
+        })
+        container.appendChild(pdfExportBtn)
       }
     }
 

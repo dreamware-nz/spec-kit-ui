@@ -5,6 +5,7 @@ import { markdownToHtml } from '../parsers/markdown-io'
 import { renderSectionCard } from '../editors/section-card'
 import { deriveArtifactState } from '../models/pipeline'
 import { handleSectionFocus } from './chat'
+import { exportSpecAsPdf } from './pdf-export'
 import { findCrossFeatureEntities, deriveFeatureName } from './feature-tabs'
 import type { Artifact, Section } from '../models/artifact'
 
@@ -64,6 +65,21 @@ export function renderContentPanel(container: HTMLElement): void {
     importBtn.textContent = 'Import'
     importBtn.addEventListener('click', () => handleImport(artifact))
     toolbar.appendChild(importBtn)
+
+    // PDF export button (only for spec artifacts)
+    if (artifact.type === 'spec') {
+      const pdfBtn = document.createElement('button')
+      pdfBtn.className = 'btn'
+      pdfBtn.textContent = 'PDF'
+      pdfBtn.title = 'Export specification as PDF'
+      pdfBtn.addEventListener('click', () => {
+        const state = getState()
+        const project = state.projects.find(p => p.id === state.currentProjectId)
+        const projectName = project?.name || 'Specification'
+        exportSpecAsPdf(artifact.content, projectName)
+      })
+      toolbar.appendChild(pdfBtn)
+    }
 
     container.appendChild(toolbar)
 
