@@ -504,6 +504,31 @@ async function sendUserMessage(text: string): Promise<void> {
       setState({ chatStatus: 'idle', chatError: null })
       if (sendBtn) sendBtn.disabled = false
       if (typingIndicator) typingIndicator.style.display = 'none'
+      // Extract options and render as buttons
+      const options = extractOptions(assistantMsg.content)
+      if (options.length > 0 && messageList) {
+        const btnContainer = document.createElement('div')
+        btnContainer.className = 'chat-option-buttons'
+        btnContainer.style.display = 'flex'
+        btnContainer.style.flexWrap = 'wrap'
+        btnContainer.style.gap = 'var(--space-2)'
+        btnContainer.style.marginTop = 'var(--space-2)'
+        btnContainer.style.alignSelf = 'flex-start'
+
+        for (const option of options) {
+          const btn = document.createElement('button')
+          btn.className = 'btn'
+          btn.style.fontSize = 'var(--text-sm)'
+          btn.textContent = option.label
+          btn.addEventListener('click', () => {
+            btnContainer.remove()
+            sendUserMessage(option.value)
+          })
+          btnContainer.appendChild(btn)
+        }
+        messageList.appendChild(btnContainer)
+      }
+
       streamingBubble = null
       streamingText = ''
       if (userAtBottom) scrollToBottom()
@@ -622,7 +647,7 @@ export function handleSectionFocus(sectionTitle: string): void {
 
 // --- Helper: render a message bubble ---
 
-function renderMessageBubble(msg: Message): void {
+function renderMessageBubble(msg: Message, isLatest = false): void {
   if (!messageList) return
 
   if (msg.role === 'user') {
@@ -652,7 +677,66 @@ function renderMessageBubble(msg: Message): void {
         messageList.appendChild(indicator)
       }
     }
+
+    // Extract numbered options and render as buttons (only for the latest message)
+    if (isLatest) {
+      const options = extractOptions(msg.content)
+      if (options.length > 0) {
+        const btnContainer = document.createElement('div')
+        btnContainer.className = 'chat-option-buttons'
+        btnContainer.style.display = 'flex'
+        btnContainer.style.flexWrap = 'wrap'
+        btnContainer.style.gap = 'var(--space-2)'
+        btnContainer.style.marginTop = 'var(--space-2)'
+        btnContainer.style.alignSelf = 'flex-start'
+
+        for (const option of options) {
+          const btn = document.createElement('button')
+          btn.className = 'btn'
+          btn.style.fontSize = 'var(--text-sm)'
+          btn.textContent = option.label
+          btn.addEventListener('click', () => {
+            // Remove the button container
+            btnContainer.remove()
+            // Send the option as a user message
+            sendUserMessage(option.value)
+          })
+          btnContainer.appendChild(btn)
+        }
+
+        messageList.appendChild(btnContainer)
+      }
+    }
   }
+}
+
+interface ChatOption {
+  label: string
+  value: string
+}
+
+function extractOptions(content: string): ChatOption[] {
+  const options: ChatOption[] = []
+  const lines = content.split('\n')
+
+  for (const line of lines) {
+    // Match patterns like: 1) Option text, 1. Option text, (1) Option text
+    const match = line.match(/^\s*(?:(\d+)[.)]\s*\*{0,2}|\((\d+)\)\s*\*{0,2})(.+?)(?:\*{0,2}\s*[-–—]\s*.+)?$/)
+    if (match) {
+      const num = match[1] || match[2]
+      const text = match[3].replace(/\*{1,2}/g, '').trim()
+      // Only include if it looks like a choice (not a long paragraph)
+      if (text.length > 2 && text.length < 80) {
+        options.push({
+          label: `${num}. ${text}`,
+          value: text,
+        })
+      }
+    }
+  }
+
+  // Only return if we found 2+ options (a real choice)
+  return options.length >= 2 ? options : []
 }
 
 function createAssistantBubble(): HTMLElement {
