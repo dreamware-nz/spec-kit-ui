@@ -36,13 +36,27 @@ export function renderSidebar(container: HTMLElement): void {
 
     const state = getState()
 
-    // App title
-    const title = document.createElement('div')
-    title.className = 'sidebar-title'
-    title.style.fontWeight = '600'
-    title.style.fontSize = 'var(--text-lg)'
-    title.textContent = 'Spec Workbench'
-    container.appendChild(title)
+    // App title with Dreamware logo
+    const titleBlock = document.createElement('div')
+    titleBlock.className = 'sidebar-title'
+    titleBlock.style.marginBottom = 'var(--space-2)'
+
+    const logo = document.createElement('img')
+    logo.src = '/images/dreamware-logo.svg'
+    logo.alt = 'Dreamware'
+    logo.style.height = '28px'
+    logo.style.opacity = '0.8'
+    titleBlock.appendChild(logo)
+
+    const subtitle = document.createElement('div')
+    subtitle.style.fontSize = 'var(--text-xs)'
+    subtitle.style.color = 'var(--color-text-secondary)'
+    subtitle.style.marginTop = 'var(--space-1)'
+    subtitle.style.letterSpacing = '0.03em'
+    subtitle.textContent = 'Spec Workbench'
+    titleBlock.appendChild(subtitle)
+
+    container.appendChild(titleBlock)
 
     // --- T047: Project list section ---
     const projectSection = document.createElement('div')

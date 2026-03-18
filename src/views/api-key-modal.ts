@@ -14,6 +14,14 @@ export function renderApiKeyModal(
   const card = document.createElement('div')
   card.className = 'modal-card'
 
+  const logoImg = document.createElement('img')
+  logoImg.src = '/images/dreamware-logo.svg'
+  logoImg.alt = 'Dreamware'
+  logoImg.style.height = '32px'
+  logoImg.style.opacity = '0.8'
+  logoImg.style.marginBottom = 'var(--space-3)'
+  card.appendChild(logoImg)
+
   const title = document.createElement('h2')
   title.id = 'api-key-title'
   title.textContent = 'Welcome to Spec Workbench'

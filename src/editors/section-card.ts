@@ -31,6 +31,13 @@ export function renderSectionCard(
   card.className = 'section-card'
   if (!section.collapsed) card.classList.add('expanded')
 
+  // Status-based left border color coding
+  if (section.content && section.content.trim().length > 20) {
+    card.classList.add('section-card--complete')
+  } else if (section.content && section.content.trim().length > 0) {
+    card.classList.add('section-card--draft')
+  }
+
   // Header button
   const header = document.createElement('button')
   header.className = 'section-card-header'
@@ -67,6 +74,9 @@ export function renderSectionCard(
   // Title
   const title = document.createElement('span')
   title.className = 'section-card-title'
+  if (section.headingLevel <= 2) {
+    title.classList.add('section-card-title--h2')
+  }
   title.textContent = section.title
   header.appendChild(title)
 

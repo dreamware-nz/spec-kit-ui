@@ -15,7 +15,7 @@ import { createProjectInDB, createArtifactInDB, getConversationByProject, saveCo
 import { renderApiKeyModal } from './api-key-modal'
 import { deriveFeatureName, gatherAllGlossaryTerms, findCrossFeatureEntities } from './feature-tabs'
 
-const WELCOME_MESSAGE = "Welcome to Spec Workbench! Tell me about what you want to build. Describe your idea in a few sentences and I'll help you develop it into a proper specification."
+const WELCOME_MESSAGE = "Hey there! I'm your specification assistant. Tell me about the product or feature you'd like to build, and I'll help you shape it into a clear, detailed spec. Just describe your idea in a few sentences to get started."
 
 let messageList: HTMLElement | null = null
 let typingIndicator: HTMLElement | null = null
@@ -108,7 +108,7 @@ export function renderChatPanel(container: HTMLElement): void {
   const input = document.createElement('textarea')
   input.className = 'chat-input'
   input.placeholder = 'Describe your idea...'
-  input.rows = 1
+  input.rows = 3
   input.setAttribute('aria-label', 'Chat message input')
   textarea = input
 
@@ -118,7 +118,21 @@ export function renderChatPanel(container: HTMLElement): void {
   send.setAttribute('aria-label', 'Send message')
   sendBtn = send
 
-  inputArea.appendChild(input)
+  const inputWrapper = document.createElement('div')
+  inputWrapper.style.flex = '1'
+  inputWrapper.style.display = 'flex'
+  inputWrapper.style.flexDirection = 'column'
+  inputWrapper.style.gap = 'var(--space-1)'
+  inputWrapper.appendChild(input)
+
+  const hint = document.createElement('div')
+  hint.style.fontSize = 'var(--text-xs)'
+  hint.style.color = 'var(--color-text-secondary)'
+  hint.style.opacity = '0.7'
+  hint.textContent = 'Press Enter to send, Shift+Enter for new line'
+  inputWrapper.appendChild(hint)
+
+  inputArea.appendChild(inputWrapper)
   inputArea.appendChild(send)
 
   // Need relative positioning for scroll button
