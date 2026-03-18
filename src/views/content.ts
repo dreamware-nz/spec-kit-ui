@@ -122,12 +122,65 @@ function updatePriorityLabels(sections: Section[]): void {
   }
 }
 
+/** Group sections into h2 parents with nested h3 children */
+interface SectionGroup {
+  parent: Section
+  parentIndex: number
+  children: Array<{ section: Section; index: number }>
+}
+
+function groupSections(sections: Section[]): Array<SectionGroup | { section: Section; index: number }> {
+  const result: Array<SectionGroup | { section: Section; index: number }> = []
+  let currentGroup: SectionGroup | null = null
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]
+    if (section.headingLevel <= 2) {
+      // Flush previous group
+      if (currentGroup) result.push(currentGroup)
+      currentGroup = { parent: section, parentIndex: i, children: [] }
+    } else if (currentGroup && section.headingLevel > 2) {
+      currentGroup.children.push({ section, index: i })
+    } else {
+      // Orphan h3+ without a parent h2 — render standalone
+      if (currentGroup) { result.push(currentGroup); currentGroup = null }
+      result.push({ section, index: i })
+    }
+  }
+  if (currentGroup) result.push(currentGroup)
+  return result
+}
+
 function renderSpecSections(
   leftPane: HTMLElement,
   rightPane: HTMLElement,
   artifact: Artifact,
 ): void {
   const sections = parseMarkdownSections(artifact.content)
+
+  // Ensure all sections start collapsed
+  for (const section of sections) {
+    section.collapsed = true
+  }
+
+  // Track all rendered cards for accordion behavior
+  const allCards: HTMLElement[] = []
+
+  function collapseAllExcept(exceptCard: HTMLElement): void {
+    for (const c of allCards) {
+      if (c !== exceptCard && c.classList.contains('expanded')) {
+        c.classList.remove('expanded')
+        const hdr = c.querySelector('.section-card-header') as HTMLElement
+        if (hdr) hdr.setAttribute('aria-expanded', 'false')
+        // Find the section index and mark collapsed
+        const idx = c.dataset.sectionIndex
+        if (idx !== undefined) {
+          const si = parseInt(idx, 10)
+          if (!isNaN(si) && sections[si]) sections[si].collapsed = true
+        }
+      }
+    }
+  }
 
   function handleSectionUpdate(index: number, content: string): void {
     sections[index].content = content
@@ -155,70 +208,78 @@ function renderSpecSections(
   // T044: Track drag state for user story reordering
   let dragSourceIndex: number | null = null
 
-  for (let i = 0; i < sections.length; i++) {
-    const card = renderSectionCard(sections[i], i, handleSectionUpdate)
-
-    // T044: Make user story sections draggable
-    if (isUserStory(sections[i])) {
-      card.draggable = true
-      card.dataset.sectionIndex = String(i)
-
-      card.addEventListener('dragstart', (e: DragEvent) => {
-        dragSourceIndex = i
-        card.style.opacity = '0.5'
-        e.dataTransfer?.setData('text/plain', String(i))
-      })
-
-      card.addEventListener('dragend', () => {
-        card.style.opacity = '1'
-        dragSourceIndex = null
-        // Clean up all drop indicators
-        leftPane.querySelectorAll('.section-card').forEach(el => {
-          ;(el as HTMLElement).style.borderTop = ''
-        })
-      })
-
-      card.addEventListener('dragover', (e: DragEvent) => {
-        if (dragSourceIndex === null) return
-        // Only allow drop on other user story cards
-        if (!isUserStory(sections[i])) return
-        e.preventDefault()
-        card.style.borderTop = '3px solid var(--color-accent)'
-      })
-
-      card.addEventListener('dragleave', () => {
-        card.style.borderTop = ''
-      })
-
-      card.addEventListener('drop', (e: DragEvent) => {
-        e.preventDefault()
-        card.style.borderTop = ''
-        if (dragSourceIndex === null || dragSourceIndex === i) return
-
-        // Reorder sections
-        const [movedSection] = sections.splice(dragSourceIndex, 1)
-        const targetIdx = dragSourceIndex < i ? i - 1 : i
-        sections.splice(targetIdx, 0, movedSection)
-
-        // Update priority labels
-        updatePriorityLabels(sections)
-
-        // Re-serialize
-        const newContent = parseSectionsToMarkdown(sections)
-        artifact.content = newContent
-        artifact.updatedAt = new Date().toISOString()
-        artifact.state = deriveArtifactState(newContent, artifact.type)
-
-        const state = getState()
-        const artifacts = new Map(state.artifacts)
-        artifacts.set(artifact.id, artifact)
-        setState({ artifacts })
-
-        markDirty(artifact.id)
+  function attachAccordion(card: HTMLElement, sectionIndex: number): void {
+    card.dataset.sectionIndex = String(sectionIndex)
+    allCards.push(card)
+    const headerEl = card.querySelector('.section-card-header') as HTMLElement
+    if (headerEl) {
+      headerEl.addEventListener('click', () => {
+        // Accordion: when expanding, collapse all others
+        if (!card.classList.contains('expanded')) {
+          // The section-card click handler will add 'expanded' after this event
+          // We need to collapse others proactively
+          setTimeout(() => collapseAllExcept(card), 0)
+        }
       })
     }
+  }
 
-    // T018: Section click-to-focus
+  function attachDrag(card: HTMLElement, i: number): void {
+    if (!isUserStory(sections[i])) return
+    card.draggable = true
+    card.dataset.sectionIndex = String(i)
+
+    card.addEventListener('dragstart', (e: DragEvent) => {
+      dragSourceIndex = i
+      card.style.opacity = '0.5'
+      e.dataTransfer?.setData('text/plain', String(i))
+    })
+
+    card.addEventListener('dragend', () => {
+      card.style.opacity = '1'
+      dragSourceIndex = null
+      leftPane.querySelectorAll('.section-card').forEach(el => {
+        ;(el as HTMLElement).style.borderTop = ''
+      })
+    })
+
+    card.addEventListener('dragover', (e: DragEvent) => {
+      if (dragSourceIndex === null) return
+      if (!isUserStory(sections[i])) return
+      e.preventDefault()
+      card.style.borderTop = '3px solid var(--color-accent)'
+    })
+
+    card.addEventListener('dragleave', () => {
+      card.style.borderTop = ''
+    })
+
+    card.addEventListener('drop', (e: DragEvent) => {
+      e.preventDefault()
+      card.style.borderTop = ''
+      if (dragSourceIndex === null || dragSourceIndex === i) return
+
+      const [movedSection] = sections.splice(dragSourceIndex, 1)
+      const targetIdx = dragSourceIndex < i ? i - 1 : i
+      sections.splice(targetIdx, 0, movedSection)
+
+      updatePriorityLabels(sections)
+
+      const newContent = parseSectionsToMarkdown(sections)
+      artifact.content = newContent
+      artifact.updatedAt = new Date().toISOString()
+      artifact.state = deriveArtifactState(newContent, artifact.type)
+
+      const state = getState()
+      const artifacts = new Map(state.artifacts)
+      artifacts.set(artifact.id, artifact)
+      setState({ artifacts })
+
+      markDirty(artifact.id)
+    })
+  }
+
+  function attachFocus(card: HTMLElement, i: number): void {
     const headerEl = card.querySelector('.section-card-header') as HTMLElement
     if (headerEl) {
       headerEl.addEventListener('dblclick', (e) => {
@@ -227,14 +288,84 @@ function renderSpecSections(
         handleSectionFocus(sections[i].title)
       })
     }
-
-    // T018: Apply focused class if this section is focused
     const state = getState()
     if (state.focusSection && sections[i].title.toLowerCase().includes(state.focusSection.toLowerCase())) {
       card.classList.add('section-card--focused')
     }
+  }
 
-    leftPane.appendChild(card)
+  // Group sections: h2 parents contain h3 children
+  const groups = groupSections(sections)
+
+  for (const group of groups) {
+    if ('parent' in group && group.children.length > 0) {
+      // Render as a collapsible group with nested children
+      const groupContainer = document.createElement('div')
+      groupContainer.className = 'section-group'
+
+      // Group header (the h2 parent card)
+      const parentCard = renderSectionCard(group.parent, group.parentIndex, handleSectionUpdate)
+
+      // Add child count to the header title
+      const titleEl = parentCard.querySelector('.section-card-title') as HTMLElement
+      if (titleEl) {
+        const childCount = group.children.length
+        const label = isUserStory(group.children[0]?.section) ? 'stories' : 'items'
+        const countBadge = document.createElement('span')
+        countBadge.style.fontSize = 'var(--text-xs)'
+        countBadge.style.color = 'var(--color-text-secondary)'
+        countBadge.style.marginLeft = 'var(--space-1)'
+        countBadge.style.fontWeight = 'normal'
+        countBadge.textContent = `(${childCount} ${label})`
+        titleEl.appendChild(countBadge)
+      }
+
+      attachAccordion(parentCard, group.parentIndex)
+      attachDrag(parentCard, group.parentIndex)
+      attachFocus(parentCard, group.parentIndex)
+      groupContainer.appendChild(parentCard)
+
+      // Nested children container — only visible when parent is expanded
+      const childrenContainer = document.createElement('div')
+      childrenContainer.className = 'section-group-children'
+      childrenContainer.style.paddingLeft = 'var(--space-4)'
+      childrenContainer.style.display = 'none'
+
+      // Show/hide children when parent expands/collapses
+      const parentHeader = parentCard.querySelector('.section-card-header') as HTMLElement
+      if (parentHeader) {
+        parentHeader.addEventListener('click', () => {
+          // Toggle after the section-card handler runs
+          setTimeout(() => {
+            childrenContainer.style.display = parentCard.classList.contains('expanded') ? 'block' : 'none'
+          }, 0)
+        })
+      }
+
+      for (const child of group.children) {
+        const childCard = renderSectionCard(child.section, child.index, handleSectionUpdate)
+        attachDrag(childCard, child.index)
+        attachFocus(childCard, child.index)
+        childrenContainer.appendChild(childCard)
+      }
+
+      groupContainer.appendChild(childrenContainer)
+      leftPane.appendChild(groupContainer)
+    } else if ('parent' in group) {
+      // h2 with no children — render standalone
+      const card = renderSectionCard(group.parent, group.parentIndex, handleSectionUpdate)
+      attachAccordion(card, group.parentIndex)
+      attachDrag(card, group.parentIndex)
+      attachFocus(card, group.parentIndex)
+      leftPane.appendChild(card)
+    } else {
+      // Standalone section (orphan h3+)
+      const card = renderSectionCard(group.section, group.index, handleSectionUpdate)
+      attachAccordion(card, group.index)
+      attachDrag(card, group.index)
+      attachFocus(card, group.index)
+      leftPane.appendChild(card)
+    }
   }
 
   // T027: Cross-feature entity linking

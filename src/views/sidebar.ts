@@ -172,10 +172,17 @@ export function renderSidebar(container: HTMLElement): void {
       nav.setAttribute('role', 'list')
       nav.setAttribute('aria-label', 'Pipeline stages')
 
-      const projectArtifacts = [...state.artifacts.values()].filter(a => a.projectId === currentProject.id)
+      // Scope pipeline to the selected feature's artifact
+      const selectedArtifact = state.currentArtifactId ? state.artifacts.get(state.currentArtifactId) : null
+      const featureArtifacts = selectedArtifact
+        ? [...state.artifacts.values()].filter(a => a.projectId === currentProject.id && (a.id === selectedArtifact.id || (a.type !== 'spec' && a.stage !== 'specify')))
+        : [...state.artifacts.values()].filter(a => a.projectId === currentProject.id)
+
+      // Determine the selected feature's current stage
+      const featureStage = selectedArtifact?.stage || state.currentStage
 
       for (const stage of PIPELINE_STAGES) {
-        const stageItem = createStageItem(stage, state.currentStage, projectArtifacts, currentProject)
+        const stageItem = createStageItem(stage, state.currentStage, featureArtifacts, currentProject, featureStage)
         nav.appendChild(stageItem)
       }
 
@@ -586,6 +593,7 @@ export function renderSidebar(container: HTMLElement): void {
     activeStage: PipelineStage,
     projectArtifacts: Artifact[],
     currentProject: Project,
+    featureStage?: PipelineStage,
   ): HTMLElement {
     const wrapper = document.createElement('div')
     wrapper.setAttribute('role', 'listitem')
@@ -600,23 +608,44 @@ export function renderSidebar(container: HTMLElement): void {
     btn.style.font = 'inherit'
     btn.style.textAlign = 'left'
 
-    // Completion indicator
-    const completion = getStageCompletion(projectArtifacts, stage)
+    // Completion indicator — scoped to feature when a feature is selected
     const dot = document.createElement('span')
     dot.className = 'pipeline-dot'
     dot.setAttribute('role', 'img')
-    if (completion.completed === completion.total && completion.total > 0) {
-      dot.classList.add('pipeline-dot--complete')
-      dot.setAttribute('aria-label', 'Complete')
-      dot.setAttribute('title', 'Complete')
-    } else if (completion.inProgress > 0 || completion.completed > 0) {
-      dot.classList.add('pipeline-dot--partial')
-      dot.setAttribute('aria-label', 'In progress')
-      dot.setAttribute('title', 'In progress')
+
+    if (featureStage) {
+      // Feature-scoped: show checkmark for completed stages, filled for current, empty for future
+      const stageOrder = PIPELINE_STAGES.indexOf(stage)
+      const currentOrder = PIPELINE_STAGES.indexOf(featureStage)
+      if (stageOrder < currentOrder) {
+        dot.classList.add('pipeline-dot--complete')
+        dot.setAttribute('aria-label', 'Complete')
+        dot.setAttribute('title', 'Complete')
+      } else if (stageOrder === currentOrder) {
+        dot.classList.add('pipeline-dot--partial')
+        dot.setAttribute('aria-label', 'In progress')
+        dot.setAttribute('title', 'In progress')
+      } else {
+        dot.classList.add('pipeline-dot--none')
+        dot.setAttribute('aria-label', 'Not started')
+        dot.setAttribute('title', 'Not started')
+      }
     } else {
-      dot.classList.add('pipeline-dot--none')
-      dot.setAttribute('aria-label', 'Not started')
-      dot.setAttribute('title', 'Not started')
+      // Project-wide fallback
+      const completion = getStageCompletion(projectArtifacts, stage)
+      if (completion.completed === completion.total && completion.total > 0) {
+        dot.classList.add('pipeline-dot--complete')
+        dot.setAttribute('aria-label', 'Complete')
+        dot.setAttribute('title', 'Complete')
+      } else if (completion.inProgress > 0 || completion.completed > 0) {
+        dot.classList.add('pipeline-dot--partial')
+        dot.setAttribute('aria-label', 'In progress')
+        dot.setAttribute('title', 'In progress')
+      } else {
+        dot.classList.add('pipeline-dot--none')
+        dot.setAttribute('aria-label', 'Not started')
+        dot.setAttribute('title', 'Not started')
+      }
     }
     btn.appendChild(dot)
 
@@ -640,13 +669,16 @@ export function renderSidebar(container: HTMLElement): void {
 
     btn.appendChild(nameBlock)
 
-    // Artifact count badge
+    // Artifact count badge — scoped to feature artifacts
     const stageArtifacts = projectArtifacts.filter(a => a.stage === stage)
-    const count = document.createElement('span')
-    count.style.fontSize = 'var(--text-xs)'
-    count.style.color = 'var(--color-text-secondary)'
-    count.textContent = `${stageArtifacts.length}`
-    btn.appendChild(count)
+    if (!featureStage) {
+      // Only show counts in project-wide mode
+      const count = document.createElement('span')
+      count.style.fontSize = 'var(--text-xs)'
+      count.style.color = 'var(--color-text-secondary)'
+      count.textContent = `${stageArtifacts.length}`
+      btn.appendChild(count)
+    }
 
     btn.addEventListener('click', async () => {
       await performStageTransition(stage, currentProject)

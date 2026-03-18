@@ -7,16 +7,40 @@ import type { Artifact } from '../models/artifact'
  * These functions remain as they are used by chat.ts and content.ts.
  */
 
-/** Derive feature name from spec content (first heading or fallback) */
+/** Derive a short, meaningful feature name from spec content */
 export function deriveFeatureName(content: string): string {
   if (!content) return 'Untitled'
   const sections = parseMarkdownSections(content)
+  let raw = ''
   if (sections.length > 0) {
-    const title = sections[0].title
-    if (title.length > 0 && title.length < 50) return title
+    raw = sections[0].title
   }
-  const firstLine = content.split('\n')[0]?.replace(/^#+\s*/, '').trim()
-  return firstLine?.slice(0, 40) || 'Untitled'
+  if (!raw) {
+    raw = content.split('\n')[0]?.replace(/^#+\s*/, '').trim() || ''
+  }
+  if (!raw) return 'Untitled'
+
+  // Strip "Feature Specification:" prefix
+  raw = raw.replace(/^Feature\s+Specification\s*:\s*/i, '').trim()
+
+  // Template default placeholder
+  if (/^\[.*\]$/.test(raw) || !raw) return 'New Feature'
+
+  // Strip common leading articles
+  raw = raw.replace(/^(a|an|the)\s+/i, '').trim()
+
+  // Title case
+  raw = raw
+    .split(/\s+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ')
+
+  // Truncate to ~30 chars
+  if (raw.length > 30) {
+    raw = raw.slice(0, 27).replace(/\s+\S*$/, '') + '...'
+  }
+
+  return raw || 'Untitled'
 }
 
 /**
