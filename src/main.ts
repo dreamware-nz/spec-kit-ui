@@ -10,6 +10,7 @@ import { startAutoSave } from './store/sync'
 import { renderShell } from './views/shell'
 import { renderEmptyState } from './views/empty-state'
 import { renderContentPanel } from './views/content'
+import { renderSidebar } from './views/sidebar'
 import { renderToasts } from './views/toast'
 import type { Artifact } from './models/artifact'
 
@@ -66,19 +67,8 @@ async function init(): Promise<void> {
     }
   })
 
-  // Sidebar placeholder
-  const sidebarTitle = document.createElement('div')
-  sidebarTitle.style.fontWeight = '600'
-  sidebarTitle.style.fontSize = 'var(--text-lg)'
-  sidebarTitle.style.marginBottom = 'var(--space-4)'
-  sidebarTitle.textContent = 'Spec Workbench'
-  sidebar.appendChild(sidebarTitle)
-
-  const sidebarInfo = document.createElement('div')
-  sidebarInfo.style.fontSize = 'var(--text-sm)'
-  sidebarInfo.style.color = 'var(--color-text-secondary)'
-  sidebarInfo.textContent = `${projects.length} project${projects.length !== 1 ? 's' : ''}`
-  sidebar.appendChild(sidebarInfo)
+  // Render sidebar with pipeline navigation
+  renderSidebar(sidebar)
 
   // Render toasts
   const toastContainer = app.querySelector('.toast-container') as HTMLElement
