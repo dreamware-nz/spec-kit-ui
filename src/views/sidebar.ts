@@ -190,16 +190,41 @@ export function renderSidebar(container: HTMLElement): void {
 
       container.appendChild(nav)
 
-      // --- "Move to Next Stage" button ---
-      const nextStage = NEXT_STAGE_MAP[state.currentStage]
-      if (nextStage) {
+      // --- "Move to Next Stage" button — only show if there's an incomplete stage to move to ---
+      const featureArtifactList = [...state.artifacts.values()].filter(a => a.projectId === currentProject.id)
+      function isStageComplete(s: PipelineStage): boolean {
+        if (s === 'specify') {
+          const spec = featureArtifactList.find(a => a.type === 'spec')
+          return !!spec && (spec.state === 'complete' || spec.state === 'draft')
+        }
+        if (s === 'clarify') {
+          const spec = featureArtifactList.find(a => a.type === 'spec')
+          return !!spec && spec.content && !/\[NEEDS CLARIFICATION/i.test(spec.content) && spec.state !== 'empty'
+        }
+        if (s === 'plan') {
+          const plan = featureArtifactList.find(a => a.type === 'plan')
+          return !!plan && !!plan.content && plan.state !== 'empty'
+        }
+        if (s === 'tasks') {
+          const tasks = featureArtifactList.find(a => a.type === 'tasks')
+          return !!tasks && !!tasks.content && tasks.state !== 'empty'
+        }
+        return false
+      }
+
+      // Find the first incomplete stage to suggest
+      const nextIncompleteStage = PIPELINE_STAGES.find(s => !isStageComplete(s))
+      const allComplete = !nextIncompleteStage
+
+      if (!allComplete && nextIncompleteStage && nextIncompleteStage !== state.currentStage) {
         const moveBtn = document.createElement('button')
         moveBtn.className = 'btn btn--primary pipeline-move-btn'
         moveBtn.style.width = '100%'
         moveBtn.style.marginTop = 'var(--space-2)'
-        moveBtn.textContent = NEXT_STAGE_LABELS[state.currentStage]
+        const label = nextIncompleteStage.charAt(0).toUpperCase() + nextIncompleteStage.slice(1)
+        moveBtn.textContent = `Move to ${label} →`
         moveBtn.addEventListener('click', async () => {
-          await performStageTransition(nextStage, currentProject)
+          await performStageTransition(nextIncompleteStage, currentProject)
         })
         container.appendChild(moveBtn)
       }
