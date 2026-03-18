@@ -14,9 +14,15 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
     return true
   } catch (err: any) {
     if (err?.status === 401) return false
-    // Other errors (rate limit, network) mean the key might be valid
-    if (err?.status === 429 || err?.status === 529) return true
-    return false
+    // Rate limit, overloaded, or model-not-found all mean the key itself is valid
+    if (err?.status === 429 || err?.status === 529 || err?.status === 404) return true
+    // CORS or network errors — key might be valid, don't reject it
+    if (err?.message?.includes('Failed to fetch') || err?.message?.includes('CORS') || err?.message?.includes('NetworkError')) return true
+    // Any other 4xx/5xx from the API means the key authenticated
+    if (err?.status && err.status >= 400) return true
+    // Unknown error — allow the key and let the actual chat call surface issues
+    console.warn('API key validation encountered unexpected error:', err?.message || err)
+    return true
   }
 }
 
