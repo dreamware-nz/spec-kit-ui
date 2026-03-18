@@ -102,9 +102,10 @@ export function renderContentPanel(container: HTMLElement): void {
     rightPane.style.display = 'none'
 
     if (artifact.type === 'spec') {
-      // Check if this is a fresh template with no real content
-      const isTemplate = artifact.content.includes('[FEATURE NAME]') || artifact.state === 'empty'
-      if (isTemplate) {
+      // Check if this is a completely empty/fresh template with zero real content
+      const hasRealContent = artifact.content && artifact.content.trim().length > 0
+        && artifact.state !== 'empty'
+      if (!hasRealContent) {
         leftPane.innerHTML = `
           <div class="empty-state" style="height: auto; padding: var(--space-8);">
             <h3 style="font-size: var(--text-lg); color: var(--color-text-secondary);">Spec will appear here</h3>
@@ -112,7 +113,7 @@ export function renderContentPanel(container: HTMLElement): void {
           </div>
         `
       } else {
-        // T029: Render as section cards — right pane shown when a card is selected
+        // Render as section cards — right pane shown when a card is selected
         renderSpecSections(leftPane, rightPane, artifact)
       }
     } else {
