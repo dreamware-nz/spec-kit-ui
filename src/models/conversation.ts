@@ -33,7 +33,7 @@ export interface LLMConfig {
 
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
   apiKey: '',
-  model: 'claude-sonnet-4-5-20241022',
+  model: 'claude-sonnet-4-5-latest',
   temperature: 0.7,
   maxTokens: 4096,
 }
