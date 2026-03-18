@@ -169,9 +169,26 @@ const PRINT_STYLES = `
 `
 
 export function exportSpecAsPdf(specContent: string, projectName: string): void {
-  // Convert markdown to HTML
   // Sort user stories by priority before rendering
-  const sortedContent = sortUserStories(specContent)
+  let sortedContent = sortUserStories(specContent)
+
+  // Strip template metadata that's not useful in a PDF
+  sortedContent = sortedContent
+    .replace(/\*\*Feature Branch\*\*:.*\n/g, '')
+    .replace(/\*\*Created\*\*:.*\n/g, '')
+    .replace(/\*\*Status\*\*:.*\n/g, '')
+    .replace(/\*\*Input\*\*:.*\n/g, '')
+
+  // Ensure Overview comes right after the title (h1)
+  const sections = parseMarkdownSections(sortedContent)
+  const overviewIdx = sections.findIndex(s => /overview/i.test(s.title))
+  if (overviewIdx > 1) {
+    // Move overview to position 1 (right after the h1 title)
+    const [overview] = sections.splice(overviewIdx, 1)
+    sections.splice(1, 0, overview)
+    sortedContent = parseSectionsToMarkdown(sections)
+  }
+
   const htmlContent = markdownToHtml(sortedContent)
 
   // Strip HTML comments from the rendered output
