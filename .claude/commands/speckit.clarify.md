@@ -4,6 +4,9 @@ handoffs:
   - label: Build Technical Plan
     agent: speckit.plan
     prompt: Create a plan for the spec. I am building with...
+scripts:
+   sh: scripts/bash/check-prerequisites.sh --json --paths-only
+   ps: scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
 ---
 
 ## User Input
@@ -22,7 +25,7 @@ Note: This clarification workflow is expected to run (and be completed) BEFORE i
 
 Execution steps:
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root **once** (combined `--json --paths-only` mode / `-Json -PathsOnly`). Parse minimal JSON payload fields:
+1. Run `{SCRIPT}` from repo root **once** (combined `--json --paths-only` mode / `-Json -PathsOnly`). Parse minimal JSON payload fields:
    - `FEATURE_DIR`
    - `FEATURE_SPEC`
    - (Optionally capture `IMPL_PLAN`, `TASKS` for future chained flows.)
@@ -41,6 +44,12 @@ Execution steps:
    - Identity & uniqueness rules
    - Lifecycle/state transitions
    - Data volume / scale assumptions
+   - Business invariants: cross-cutting constraints that must always hold
+   - Numeric/financial boundary rules, ownership/cardinality limits
+   - Temporal constraints (deadlines, expirations, windows)
+   - Entity lifecycles: entities with status/state/phase fields
+   - Valid state transitions and who/what triggers them
+   - Terminal states and re-entry rules
 
    Interaction & UX Flow:
    - Critical user journeys / sequences
@@ -51,7 +60,7 @@ Execution steps:
    - Performance (latency, throughput targets)
    - Scalability (horizontal/vertical, limits)
    - Reliability & availability (uptime, recovery expectations)
-   - Observability (logging, metrics, tracing signals)
+   - Observability (logging, metrics, tracing signal requirements)
    - Security & privacy (authN/Z, data protection, threat assumptions)
    - Compliance / regulatory constraints (if any)
 
@@ -65,6 +74,20 @@ Execution steps:
    - Rate limiting / throttling
    - Conflict resolution (e.g., concurrent edits)
 
+   System Behaviors:
+   - Side effects of user actions (notifications, audit, sync)
+   - Time-triggered behaviors (cron, scheduled, expiry)
+   - External event reactions (webhooks, callbacks)
+   - Threshold/breach reactions
+   - Compensation/rollback behaviors
+
+   Design Language (if UI detected):
+   - Component vocabulary and hierarchy
+   - Interaction patterns (hover, drag, swipe, keyboard)
+   - Responsive breakpoints and behavior
+   - Accessibility level (WCAG AA/AAA)
+   - Loading/empty/error state presentation
+
    Constraints & Tradeoffs:
    - Technical constraints (language, storage, hosting)
    - Explicit tradeoffs or rejected alternatives
@@ -72,6 +95,9 @@ Execution steps:
    Terminology & Consistency:
    - Canonical glossary terms
    - Avoided synonyms / deprecated terms
+   - Cross-reference against project glossary (`.specify/memory/glossary.md` if it exists)
+   - Flag terms used inconsistently across the spec vs glossary
+   - Flag domain nouns absent from glossary
 
    Completion Signals:
    - Acceptance criteria testability
@@ -164,6 +190,9 @@ Execution steps:
    - Number of questions asked & answered.
    - Path to updated spec.
    - Sections touched (list names).
+   - After completing the questioning loop, append a safety net:
+     "I also scanned for these concerns but didn't find strong signals: [list of taxonomy categories marked Clear that have sub-items the user might want to address]. Should we address any of them?"
+   - This catches things detection missed because the user didn't use trigger words.
    - Coverage summary table listing each taxonomy category with Status: Resolved (was Partial/Missing and addressed), Deferred (exceeds question quota or better suited for planning), Clear (already sufficient), Outstanding (still Partial/Missing but low impact).
    - If any Outstanding or Deferred remain, recommend whether to proceed to `/speckit.plan` or run `/speckit.clarify` again later post-plan.
    - Suggested next command.
@@ -178,4 +207,4 @@ Behavior rules:
 - If no questions asked due to full coverage, output a compact coverage summary (all categories Clear) then suggest advancing.
 - If quota reached with unresolved high-impact categories remaining, explicitly flag them under Deferred with rationale.
 
-Context for prioritization: $ARGUMENTS
+Context for prioritization: {ARGS}

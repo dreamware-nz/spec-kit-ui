@@ -1,50 +1,37 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Spec Kit UI Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Spec-First, Always
+Every feature in Spec Kit UI MUST begin with a specification. The UI itself is a tool for creating and managing specifications — it must embody the methodology it enables. Changes to the UI require spec updates first.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Incremental Disclosure
+The interface MUST support incremental workflow — users start with a rough idea and progressively refine it through structured stages. No stage should require completing all previous stages perfectly. Users can navigate freely between stages and refine as understanding grows.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Simplicity Over Features
+Start with the minimum viable interface. Use vanilla web technologies where possible. Avoid frameworks that add complexity without clear benefit. A single HTML file that works is better than an elaborate build system that doesn't ship.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Local-First
+All data MUST be stored locally by default. No server required for basic operation. The UI should work as a static site with browser-local persistence. Server features (collaboration, sync) are additive, never required.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Markdown as Truth
+Specifications are markdown files. The UI reads and writes markdown. The canonical form of every artifact is a markdown file on disk. The UI is a lens for viewing and editing these files, not a replacement for them.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Pipeline Awareness
+The UI MUST reflect the spec-kit pipeline stages (constitution → specify → clarify → plan → tasks → implement). Navigation, progress tracking, and artifact relationships should make the pipeline visible and navigable.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### VII. Test-First Development
+All implementation MUST follow test-driven development. Write failing tests before implementation code. Use integration tests that exercise real browser behavior.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Development Workflow
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- All changes go through feature branches
+- Specs before code, tests before implementation
+- Commit after each logical unit of work
+- Keep dependencies minimal
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other practices. Amendments require explicit documentation of rationale, review, and a backwards compatibility assessment.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-03-18 | **Last Amended**: 2026-03-18

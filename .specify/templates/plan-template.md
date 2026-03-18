@@ -44,6 +44,10 @@ specs/[###-feature]/
 ├── data-model.md        # Phase 1 output (/speckit.plan command)
 ├── quickstart.md        # Phase 1 output (/speckit.plan command)
 ├── contracts/           # Phase 1 output (/speckit.plan command)
+├── security.md          # Phase 1 output, when security signals detected (/speckit.plan command)
+├── events.md            # Phase 1 output, when event signals detected (/speckit.plan command)
+├── observability.md     # Phase 1 output, when observability signals detected (/speckit.plan command)
+├── deployment.md        # Phase 1 output, when deployment signals detected (/speckit.plan command)
 └── tasks.md             # Phase 2 output (/speckit.tasks command - NOT created by /speckit.plan)
 ```
 
@@ -93,6 +97,75 @@ ios/ or android/
 
 **Structure Decision**: [Document the selected structure and reference the real
 directories captured above]
+
+## Data Model Enrichment
+
+> **Instructions for /speckit.plan**: When generating `data-model.md`, include the standard entity/field/relationship content PLUS the following subsections when signals are present in the spec.
+
+### Indexes & Query Patterns *(include if persistent storage detected)*
+
+- Which fields are queried and how frequently
+- Expected access patterns (read-heavy, write-heavy, mixed)
+- Recommended indexes with rationale
+
+### Migration Strategy *(include if database detected)*
+
+- How schema changes are applied (versioned migrations, blue-green, expand-contract)
+- Rollback approach for failed migrations
+- Data backfill strategy if needed
+
+### Data Lifecycle *(include if data retention or compliance mentioned)*
+
+- Retention policy per entity
+- Archival rules (when, where, how)
+- Soft-delete patterns (if applicable)
+- GDPR / right-to-deletion considerations
+- Audit trail requirements
+
+### Partitioning / Sharding *(include if large-scale data or high volume mentioned)*
+
+- Partition key selection and rationale
+- Shard strategy for large-scale data
+- Cross-partition query handling
+
+## Contracts Enrichment
+
+> **Instructions for /speckit.plan**: When generating files in `contracts/`, use a prescribed schema format rather than freeform markdown.
+
+### Prescribed Format
+
+- **REST APIs**: OpenAPI 3.x specification (YAML)
+- **GraphQL**: GraphQL SDL schema
+- **Event-driven**: AsyncAPI specification (YAML)
+
+### Required Elements Per Endpoint/Operation
+
+Each endpoint or operation in `contracts/` MUST include:
+
+- **Error envelope standard** — consistent error response shape across all endpoints
+- **Pagination/filtering/sorting conventions** — standard query parameter patterns (if applicable)
+- **Auth per endpoint** — which auth scheme applies, which roles/scopes are required
+- **Request/response examples** — at least one happy-path and one error example
+- **Rate limiting** — per-endpoint or global limits (if applicable)
+
+## Signal-Based Artifact Generation
+
+> **Instructions for /speckit.plan**: During Phase 1 (Design & Contracts), scan the spec for signals indicating additional artifacts are needed. Generate applicable ones automatically. Skip inapplicable ones silently. At the end, report what was generated and what was skipped with a safety net prompt.
+
+### Detection Table
+
+| Concern | Signals in Spec | Artifact | Template |
+|---------|----------------|----------|----------|
+| Security | User accounts, personal data, payments, roles, multi-tenancy, API keys, compliance | `security.md` | `templates/security-template.md` |
+| Domain Events | System behaviors with async actions, queues, multi-service, eventual consistency | `events.md` | `templates/events-template.md` |
+| Observability | Production/SLA/uptime/reliability, logging/metrics/tracing requirements | `observability.md` | `templates/observability-template.md` |
+| Deployment | New service, infra changes, migrations, multi-environment | `deployment.md` | `templates/deployment-template.md` |
+
+### Safety Net Prompt
+
+After generating all applicable artifacts, output:
+
+> "I also considered but skipped [list of skipped concerns] because I didn't see signals for them in the spec. Should I generate any of these?"
 
 ## Complexity Tracking
 

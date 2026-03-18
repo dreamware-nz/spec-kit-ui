@@ -1,5 +1,8 @@
 ---
 description: Generate a custom checklist for the current feature based on user requirements.
+scripts:
+  sh: scripts/bash/check-prerequisites.sh --json
+  ps: scripts/powershell/check-prerequisites.ps1 -Json
 ---
 
 ## Checklist Purpose: "Unit Tests for English"
@@ -33,7 +36,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution Steps
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
+1. **Setup**: Run `{SCRIPT}` from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS list.
    - All file paths must be absolute.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
@@ -204,7 +207,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - ✅ "Are [edge cases/scenarios] addressed in requirements?"
    - ✅ "Does the spec define [missing aspect]?"
 
-6. **Structure Reference**: Generate the checklist following the canonical template in `.specify/templates/checklist-template.md` for title, meta section, category headings, and ID formatting. If template is unavailable, use: H1 title, purpose/created meta lines, `##` category sections containing `- [ ] CHK### <requirement item>` lines with globally incrementing IDs starting at CHK001.
+6. **Structure Reference**: Generate the checklist following the canonical template in `templates/checklist-template.md` for title, meta section, category headings, and ID formatting. If template is unavailable, use: H1 title, purpose/created meta lines, `##` category sections containing `- [ ] CHK### <requirement item>` lines with globally incrementing IDs starting at CHK001.
 
 7. **Report**: Output full path to checklist file, item count, and summarize whether the run created a new file or appended to an existing one. Summarize:
    - Focus areas selected
@@ -262,6 +265,46 @@ Sample items:
 - "Is the threat model documented and requirements aligned to it? [Traceability]"
 - "Are security requirements consistent with compliance obligations? [Consistency]"
 - "Are security failure/breach response requirements defined? [Gap, Exception Flow]"
+
+**Invariants Requirements Quality:** `invariants.md`
+
+Sample items:
+
+- "Are all invariant scope boundaries explicitly defined? [Completeness, Spec §INV-001]"
+- "Is the violation consequence specified for each invariant? [Completeness]"
+- "Are invariant enforcement layers identified (validation, DB constraint, test)? [Coverage, Gap]"
+- "Do any invariants conflict with each other? [Consistency]"
+- "Are invariant boundary values quantified with specific limits? [Clarity]"
+
+**Events Requirements Quality:** `events.md`
+
+Sample items:
+
+- "Are delivery guarantees specified for each event type? [Completeness]"
+- "Are idempotency requirements defined for consumed events? [Coverage, Gap]"
+- "Are event payload schemas specified with field types? [Clarity]"
+- "Are saga compensation steps defined for all failure scenarios? [Coverage, Exception Flow]"
+- "Is event ordering documented for dependent event sequences? [Consistency]"
+
+**Observability Requirements Quality:** `observability.md`
+
+Sample items:
+
+- "Are SLO targets quantified with specific percentages/durations? [Clarity]"
+- "Are logging requirements defined for all error categories? [Coverage]"
+- "Is sensitive data redaction specified for log entries? [Completeness, Security]"
+- "Are alert escalation paths defined for each severity level? [Completeness]"
+- "Are distributed tracing boundaries defined for cross-service flows? [Coverage, Gap]"
+
+**Deployment Requirements Quality:** `deployment.md`
+
+Sample items:
+
+- "Are environment topology requirements explicitly defined? [Completeness]"
+- "Are infrastructure sizing requirements quantified per component? [Clarity]"
+- "Are rollback criteria specified for each deployment stage? [Coverage, Gap]"
+- "Is the CI/CD gate strategy defined between environments? [Completeness]"
+- "Are service dependency failure modes documented? [Coverage, Exception Flow]"
 
 ## Anti-Examples: What NOT To Do
 

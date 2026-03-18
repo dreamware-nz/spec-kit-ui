@@ -8,6 +8,9 @@ handoffs:
     agent: speckit.clarify
     prompt: Clarify specification requirements
     send: true
+scripts:
+  sh: scripts/bash/create-new-feature.sh "{ARGS}"
+  ps: scripts/powershell/create-new-feature.ps1 "{ARGS}"
 ---
 
 ## User Input
@@ -20,7 +23,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-The text the user typed after `/speckit.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
+The text the user typed after `/speckit.specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `{ARGS}` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
 
 Given that feature description, do this:
 
@@ -38,8 +41,8 @@ Given that feature description, do this:
 
 2. **Create the feature branch** by running the script with `--short-name` (and `--json`), and do NOT pass `--number` (the script auto-detects the next globally available number across all branches and spec directories):
 
-   - Bash example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" --json --short-name "user-auth" "Add user authentication"`
-   - PowerShell example: `.specify/scripts/bash/create-new-feature.sh "$ARGUMENTS" -Json -ShortName "user-auth" "Add user authentication"`
+   - Bash example: `{SCRIPT} --json --short-name "user-auth" "Add user authentication"`
+   - PowerShell example: `{SCRIPT} -Json -ShortName "user-auth" "Add user authentication"`
 
    **IMPORTANT**:
    - Do NOT pass `--number` — the script determines the correct next number automatically
@@ -49,9 +52,16 @@ Given that feature description, do this:
    - The JSON output will contain BRANCH_NAME and SPEC_FILE paths
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot")
 
-3. Load `.specify/templates/spec-template.md` to understand required sections.
+3. Load `templates/spec-template.md` to understand required sections.
 
-4. Follow this execution flow:
+4. **Glossary check**:
+
+   1. Read `.specify/memory/glossary.md` if it exists. If missing, create it from `templates/glossary-template.md` (empty table with headers only).
+   2. Extract domain nouns from the feature description.
+   3. Cross-reference against the glossary. Any nouns not found become candidates for the `## Glossary Additions` section in the spec.
+   4. When writing the spec (step 6), populate `## Glossary Additions` with candidate terms and proposed definitions. If no new terms, remove the section entirely.
+
+5. Follow this execution flow:
 
     1. Parse user description from Input
        If empty: ERROR "No feature description provided"
@@ -75,11 +85,27 @@ Given that feature description, do this:
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
        Each criterion must be verifiable without implementation details
     7. Identify Key Entities (if data involved)
-    8. Return: SUCCESS (spec ready for planning)
+    8. Identify System Behaviors (if applicable)
+       Scan for: side effects, time-triggered actions, external reactions, threshold breaches
+       If found: populate ## System Behaviors with SB-### entries
+       If none: remove ## System Behaviors section entirely
+    9. Identify Invariants (if applicable)
+       Scan for: numeric constraints, cardinality limits, derived value rules, cross-cutting business rules
+       If found: populate ## Invariants with INV-### entries
+       If none: remove ## Invariants section entirely
+   10. Identify Entity Lifecycles (if applicable)
+       Scan for: entities with status/state fields, approval flows, multi-step processes
+       If found: populate ## Entity Lifecycles with state tables
+       If none: remove ## Entity Lifecycles section entirely
+   11. Identify Design Language (if UI detected)
+       Scan for: pages, screens, dashboards, forms, interactive elements
+       If found: populate ## Design Language subsections
+       If none: remove ## Design Language section entirely
+   12. Return: SUCCESS (spec ready for planning)
 
-5. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+6. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
 
-6. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+7. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
 
    a. **Create Spec Quality Checklist**: Generate a checklist file at `FEATURE_DIR/checklists/requirements.md` using the checklist template structure with these validation items:
 
@@ -96,7 +122,9 @@ Given that feature description, do this:
       - [ ] Focused on user value and business needs
       - [ ] Written for non-technical stakeholders
       - [ ] All mandatory sections completed
-      
+      - [ ] Glossary terms consistent with project glossary (if `.specify/memory/glossary.md` exists)
+      - [ ] New domain terms captured in Glossary Additions section
+
       ## Requirement Completeness
       
       - [ ] No [NEEDS CLARIFICATION] markers remain
@@ -114,7 +142,11 @@ Given that feature description, do this:
       - [ ] User scenarios cover primary flows
       - [ ] Feature meets measurable outcomes defined in Success Criteria
       - [ ] No implementation details leak into specification
-      
+      - [ ] System behaviors identified (or section removed as not applicable)
+      - [ ] Invariants identified (or section removed as not applicable)
+      - [ ] Entity lifecycles defined for stateful entities (or section removed as not applicable)
+      - [ ] Design language defined for UI features (or section removed as not applicable)
+
       ## Notes
       
       - Items marked incomplete require spec updates before `/speckit.clarify` or `/speckit.plan`
@@ -126,7 +158,7 @@ Given that feature description, do this:
 
    c. **Handle Validation Results**:
 
-      - **If all items pass**: Mark checklist complete and proceed to step 7
+      - **If all items pass**: Mark checklist complete and proceed to step 8
 
       - **If items fail (excluding [NEEDS CLARIFICATION])**:
         1. List the failing items and specific issues
@@ -171,7 +203,7 @@ Given that feature description, do this:
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
-7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+8. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
 
 **NOTE:** The script creates and checks out the new branch and initializes the spec file before writing.
 

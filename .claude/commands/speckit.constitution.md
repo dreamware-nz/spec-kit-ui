@@ -48,6 +48,7 @@ Follow this execution flow:
    - Read `.specify/templates/tasks-template.md` and ensure task categorization reflects new or removed principle-driven task types (e.g., observability, versioning, testing discipline).
    - Read each command file in `.specify/templates/commands/*.md` (including this one) to verify no outdated references (agent-specific names like CLAUDE only) remain when generic guidance is required.
    - Read any runtime guidance docs (e.g., `README.md`, `docs/quickstart.md`, or agent-specific guidance files if present). Update references to principles changed.
+   - Check if `.specify/memory/glossary.md` exists. If not, copy `templates/glossary-template.md` to `.specify/memory/glossary.md`. This creates the project-wide glossary that `/speckit.specify` and `/speckit.clarify` will consult for terminology consistency.
 
 5. Produce a Sync Impact Report (prepend as an HTML comment at top of the constitution file after update):
    - Version change: old → new
@@ -55,6 +56,7 @@ Follow this execution flow:
    - Added sections
    - Removed sections
    - Templates requiring updates (✅ updated / ⚠ pending) with file paths
+   - Glossary file: created / already exists
    - Follow-up TODOs if any placeholders intentionally deferred.
 
 6. Validation before final output:

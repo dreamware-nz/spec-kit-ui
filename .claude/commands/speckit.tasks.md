@@ -9,6 +9,9 @@ handoffs:
     agent: speckit.implement
     prompt: Start the implementation in phases
     send: true
+scripts:
+  sh: scripts/bash/check-prerequisites.sh --json
+  ps: scripts/powershell/check-prerequisites.ps1 -Json
 ---
 
 ## User Input
@@ -55,11 +58,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Load design documents**: Read from FEATURE_DIR:
    - **Required**: plan.md (tech stack, libraries, structure), spec.md (user stories with priorities)
-   - **Optional**: data-model.md (entities), contracts/ (interface contracts), research.md (decisions), quickstart.md (test scenarios)
+   - **Optional**: data-model.md (entities), contracts/ (interface contracts), research.md (decisions), quickstart.md (test scenarios), security.md (security model), events.md (domain events), observability.md (SLIs/logging), deployment.md (infrastructure)
    - Note: Not all projects have all documents. Generate tasks based on what's available.
 
 3. **Execute task generation workflow**:
@@ -73,7 +76,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Create parallel execution examples per user story
    - Validate task completeness (each user story has all needed tasks, independently testable)
 
-4. **Generate tasks.md**: Use `.specify/templates/tasks-template.md` as structure, fill with:
+4. **Generate tasks.md**: Use `templates/tasks-template.md` as structure, fill with:
    - Correct feature name from plan.md
    - Phase 1: Setup tasks (project initialization)
    - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
@@ -123,7 +126,7 @@ You **MUST** consider the user input before proceeding (if not empty).
        ```
    - If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
 
-Context for task generation: $ARGUMENTS
+Context for task generation: {ARGS}
 
 The tasks.md should be immediately executable - each task must be specific enough that an LLM can complete it without additional context.
 
@@ -189,6 +192,42 @@ Every task MUST strictly follow this format:
    - Shared infrastructure → Setup phase (Phase 1)
    - Foundational/blocking tasks → Foundational phase (Phase 2)
    - Story-specific setup → within that story's phase
+
+5. **From Invariants (spec.md)**:
+   - Each invariant (INV-###) → validation task(s) in the appropriate user story phase
+   - Invariants that span multiple stories → Foundational phase (Phase 2)
+   - Include: input validation, database constraints, test for violation behavior
+
+6. **From Entity Lifecycles (spec.md)**:
+   - Each state transition → guard implementation task in the appropriate user story phase
+   - State machine setup (enum/model definition) → Foundational phase if shared
+   - Include: transition validation, invalid transition rejection, terminal state enforcement
+
+7. **From System Behaviors (spec.md)**:
+   - Each system behavior (SB-###) → implementation task(s)
+   - Time-triggered behaviors → scheduled job/cron task
+   - Event reactions → event handler/webhook task
+   - Map to user story phase if story-specific, or Polish phase if cross-cutting
+
+8. **From Security Model (security.md, if exists)**:
+   - Auth setup → Foundational phase
+   - Per-endpoint auth → within relevant user story phase
+   - Data classification handling → Foundational phase
+
+9. **From Domain Events (events.md, if exists)**:
+   - Event publishing → within relevant user story phase
+   - Event consumption → within relevant user story or Integration phase
+   - Saga/choreography → dedicated tasks with clear compensation steps
+
+10. **From Observability (observability.md, if exists)**:
+    - Logging/metrics setup → Foundational phase
+    - Per-feature instrumentation → within relevant user story phase
+    - Alert configuration → Polish phase
+
+11. **From Deployment (deployment.md, if exists)**:
+    - Infrastructure setup → Setup phase or Foundational phase
+    - CI/CD pipeline → Polish phase
+    - Migration scripts → Foundational phase
 
 ### Phase Structure
 
