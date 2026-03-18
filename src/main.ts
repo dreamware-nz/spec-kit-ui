@@ -5,9 +5,12 @@ import './styles/components.css'
 import './styles/responsive.css'
 
 import { getDB, getAllProjects, getArtifactsByProject } from './store/db'
-import { setState } from './store/state'
+import { getState, setState, subscribe } from './store/state'
 import { startAutoSave } from './store/sync'
 import { renderShell } from './views/shell'
+import { renderEmptyState } from './views/empty-state'
+import { renderContentPanel } from './views/content'
+import { renderToasts } from './views/toast'
 import type { Artifact } from './models/artifact'
 
 async function init(): Promise<void> {
@@ -33,45 +36,37 @@ async function init(): Promise<void> {
     currentProjectId: projects.length > 0 ? projects[projects.length - 1].id : null,
   })
 
+  // If there's a current project, set the first artifact as current
+  const state = getState()
+  if (state.currentProjectId) {
+    const projectArtifacts = [...state.artifacts.values()].filter(
+      a => a.projectId === state.currentProjectId,
+    )
+    if (projectArtifacts.length > 0) {
+      setState({ currentArtifactId: projectArtifacts[0].id })
+    }
+  }
+
   // Render shell
   const app = document.getElementById('app')!
   const { sidebar, content } = renderShell(app)
 
-  // Placeholder content until US1 is implemented
-  if (projects.length === 0) {
-    const emptyState = document.createElement('div')
-    emptyState.className = 'empty-state'
+  // Render main content area
+  renderMainContent(content)
 
-    const heading = document.createElement('h2')
-    heading.textContent = 'Spec Workbench'
-    emptyState.appendChild(heading)
+  // Subscribe to state changes that require content re-routing
+  let lastProjectId = getState().currentProjectId
+  let lastHadProjects = getState().projects.length > 0
+  subscribe((s) => {
+    const hasProjects = s.projects.length > 0
+    if (hasProjects !== lastHadProjects || s.currentProjectId !== lastProjectId) {
+      lastHadProjects = hasProjects
+      lastProjectId = s.currentProjectId
+      renderMainContent(content)
+    }
+  })
 
-    const description = document.createElement('p')
-    description.textContent = 'Describe your feature idea to get started. The workbench will help you structure it into a proper specification.'
-    emptyState.appendChild(description)
-
-    const textarea = document.createElement('textarea')
-    textarea.className = 'textarea'
-    textarea.placeholder = 'What do you want to build?'
-    textarea.rows = 6
-    textarea.style.maxWidth = '480px'
-    emptyState.appendChild(textarea)
-
-    const button = document.createElement('button')
-    button.className = 'btn btn--primary'
-    button.textContent = 'Create Spec'
-    emptyState.appendChild(button)
-
-    content.appendChild(emptyState)
-  } else {
-    const wrapper = document.createElement('div')
-    wrapper.style.padding = 'var(--space-4)'
-    const msg = document.createElement('p')
-    msg.textContent = 'Project loaded. Content panel will be implemented in US1.'
-    wrapper.appendChild(msg)
-    content.appendChild(wrapper)
-  }
-
+  // Sidebar placeholder
   const sidebarTitle = document.createElement('div')
   sidebarTitle.style.fontWeight = '600'
   sidebarTitle.style.fontSize = 'var(--text-lg)'
@@ -85,8 +80,28 @@ async function init(): Promise<void> {
   sidebarInfo.textContent = `${projects.length} project${projects.length !== 1 ? 's' : ''}`
   sidebar.appendChild(sidebarInfo)
 
+  // Render toasts
+  const toastContainer = app.querySelector('.toast-container') as HTMLElement
+  if (toastContainer) {
+    renderToasts(toastContainer)
+  }
+
   // Start auto-save
   startAutoSave()
+}
+
+function renderMainContent(content: HTMLElement): void {
+  // Clear content
+  while (content.firstChild) {
+    content.removeChild(content.firstChild)
+  }
+
+  const state = getState()
+  if (state.projects.length === 0) {
+    renderEmptyState(content)
+  } else {
+    renderContentPanel(content)
+  }
 }
 
 init().catch(console.error)
