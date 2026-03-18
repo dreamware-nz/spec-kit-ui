@@ -60,6 +60,31 @@ function sortUserStories(markdown: string): string {
   return parseSectionsToMarkdown(result)
 }
 
+function deduplicateSections(sections: import('../models/artifact').Section[]): import('../models/artifact').Section[] {
+  const seen = new Map<string, number>()
+  const result: import('../models/artifact').Section[] = []
+
+  for (const section of sections) {
+    // Normalize title for comparison (lowercase, strip *(mandatory)* etc.)
+    const key = section.title.toLowerCase().replace(/\s*\*?\(mandatory\)\*?\s*/g, '').trim()
+      + ':' + section.headingLevel
+
+    const existingIdx = seen.get(key)
+    if (existingIdx !== undefined) {
+      // Merge: append this section's content to the existing one
+      const existing = result[existingIdx]
+      if (section.content.trim() && section.content.trim() !== existing.content.trim()) {
+        existing.content = existing.content.trim() + '\n\n' + section.content.trim()
+      }
+    } else {
+      seen.set(key, result.length)
+      result.push({ ...section })
+    }
+  }
+
+  return result
+}
+
 const PRINT_STYLES = `
   @page {
     size: A4;
@@ -172,15 +197,19 @@ export function exportSpecAsPdf(specContent: string, projectName: string): void 
   // Sort user stories by priority before rendering
   let sortedContent = sortUserStories(specContent)
 
-  // Strip template metadata that's not useful in a PDF
+  // Strip template metadata and annotations not useful in a PDF
   sortedContent = sortedContent
     .replace(/\*\*Feature Branch\*\*:.*\n/g, '')
     .replace(/\*\*Created\*\*:.*\n/g, '')
     .replace(/\*\*Status\*\*:.*\n/g, '')
     .replace(/\*\*Input\*\*:.*\n/g, '')
+    .replace(/\s*\*?\(mandatory\)\*?/g, '')
+    .replace(/\[FEATURE NAME\]/g, projectName)
+    .replace(/\[DATE\]/g, new Date().toISOString().split('T')[0])
+    .replace(/\[###-feature-name\]/g, '')
 
-  // Ensure Overview comes right after the title (h1)
-  const sections = parseMarkdownSections(sortedContent)
+  // Deduplicate sections with the same title — merge content from duplicates
+  const sections = deduplicateSections(parseMarkdownSections(sortedContent))
   const overviewIdx = sections.findIndex(s => /overview/i.test(s.title))
 
   if (overviewIdx > 1) {
