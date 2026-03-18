@@ -143,10 +143,19 @@ export function renderSidebar(container: HTMLElement): void {
 
       featuresSection.appendChild(featuresHeader)
 
-      // Get all spec artifacts for the current project
+      // Get all spec artifacts for the current project — exclude empty template stubs
       const specArtifacts = [...state.artifacts.values()].filter(
         a => a.projectId === state.currentProjectId && a.type === 'spec'
+          && a.state !== 'empty'
+          && a.content
+          && !(/^# Feature Specification: \[FEATURE NAME\]/.test(a.content) && a.content.includes('[Describe this user journey'))
       )
+
+      // Always show the currently selected artifact even if it's a template (so user can work on it)
+      const currentArtifact = state.currentArtifactId ? state.artifacts.get(state.currentArtifactId) : null
+      if (currentArtifact && currentArtifact.type === 'spec' && !specArtifacts.find(a => a.id === currentArtifact.id)) {
+        specArtifacts.unshift(currentArtifact)
+      }
 
       // Render each feature item
       for (const artifact of specArtifacts) {
