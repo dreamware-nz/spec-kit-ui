@@ -688,10 +688,28 @@ export function renderSidebar(container: HTMLElement): void {
     dot.setAttribute('role', 'img')
 
     if (featureStage) {
-      // Feature-scoped: show checkmark for completed stages, filled for current, empty for future
+      // Feature-scoped: determine stage completion intelligently
       const stageOrder = PIPELINE_STAGES.indexOf(stage)
       const currentOrder = PIPELINE_STAGES.indexOf(featureStage)
-      if (stageOrder < currentOrder) {
+
+      // Special case: Clarify is "complete" if the spec has no [NEEDS CLARIFICATION] markers
+      let stageIsComplete = stageOrder < currentOrder
+      if (stage === 'clarify') {
+        const specArtifact = projectArtifacts.find(a => a.type === 'spec')
+        if (specArtifact && specArtifact.content) {
+          const hasMarkers = /\[NEEDS CLARIFICATION/i.test(specArtifact.content)
+          stageIsComplete = !hasMarkers && specArtifact.state !== 'empty'
+        }
+      }
+      // Special case: Specify is "complete" if the spec has real content (not just template)
+      if (stage === 'specify') {
+        const specArtifact = projectArtifacts.find(a => a.type === 'spec')
+        if (specArtifact) {
+          stageIsComplete = specArtifact.state === 'complete' || specArtifact.state === 'draft'
+        }
+      }
+
+      if (stageIsComplete) {
         dot.classList.add('pipeline-dot--complete')
         dot.setAttribute('aria-label', 'Complete')
         dot.setAttribute('title', 'Complete')
