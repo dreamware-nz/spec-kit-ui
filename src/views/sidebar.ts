@@ -920,8 +920,8 @@ export function renderSidebar(container: HTMLElement): void {
       setState({ artifacts })
     }
 
-    // Set the primary artifact as current
-    setState({ currentArtifactId: primaryArtifact.id })
+    // Set the primary artifact as current and ensure currentStage is updated
+    setState({ currentStage: newStage, currentArtifactId: primaryArtifact.id })
 
     // Update the chat context (separator, toast, conversation pipelineStage)
     handleStageTransition(newStage)

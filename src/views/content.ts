@@ -116,6 +116,9 @@ export function renderContentPanel(container: HTMLElement): void {
         // Render as section cards — right pane shown when a card is selected
         renderSpecSections(leftPane, rightPane, artifact)
       }
+    } else if (artifact.type === 'tasks') {
+      // Tasks: render as interactive checklist, with edit toggle for raw markdown
+      renderTaskChecklist(leftPane, rightPane, artifact)
     } else {
       // Non-spec: CodeMirror editor + preview — show both panes
       rightPane.style.display = ''
@@ -459,6 +462,223 @@ function renderRawEditor(
 
   // Initial preview — markdownToHtml sanitizes via DOMPurify
   updatePreview(rightPane, artifact.content)
+}
+
+/** Parsed task item for checklist rendering */
+interface TaskItem {
+  lineIndex: number
+  checked: boolean
+  label: string
+}
+
+interface TaskGroup {
+  heading: string
+  items: TaskItem[]
+}
+
+function parseTaskMarkdown(content: string): { groups: TaskGroup[]; lines: string[] } {
+  const lines = content.split('\n')
+  const groups: TaskGroup[] = []
+  let currentGroup: TaskGroup = { heading: '', items: [] }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const headingMatch = line.match(/^##\s+(.+)/)
+    if (headingMatch) {
+      if (currentGroup.heading || currentGroup.items.length > 0) {
+        groups.push(currentGroup)
+      }
+      currentGroup = { heading: headingMatch[1], items: [] }
+      continue
+    }
+    const taskMatch = line.match(/^- \[([ xX])\]\s+(.+)/)
+    if (taskMatch) {
+      currentGroup.items.push({
+        lineIndex: i,
+        checked: taskMatch[1] !== ' ',
+        label: taskMatch[2],
+      })
+    }
+  }
+  if (currentGroup.heading || currentGroup.items.length > 0) {
+    groups.push(currentGroup)
+  }
+  return { groups, lines }
+}
+
+function renderTaskChecklist(
+  leftPane: HTMLElement,
+  rightPane: HTMLElement,
+  artifact: Artifact,
+): void {
+  let showingRaw = false
+
+  function renderChecklist(): void {
+    while (leftPane.firstChild) leftPane.removeChild(leftPane.firstChild)
+
+    // Edit toggle button
+    const toggleBtn = document.createElement('button')
+    toggleBtn.className = 'btn'
+    toggleBtn.style.marginBottom = 'var(--space-3)'
+    toggleBtn.textContent = showingRaw ? 'Checklist' : 'Edit Markdown'
+    toggleBtn.addEventListener('click', () => {
+      showingRaw = !showingRaw
+      if (showingRaw) {
+        while (leftPane.firstChild) leftPane.removeChild(leftPane.firstChild)
+        // Re-add toggle
+        toggleBtn.textContent = 'Checklist'
+        leftPane.appendChild(toggleBtn)
+        // Show raw editor
+        const editorHost = document.createElement('div')
+        editorHost.style.flex = '1'
+        leftPane.appendChild(editorHost)
+        rightPane.style.display = ''
+        renderRawEditor(editorHost, rightPane, artifact)
+      } else {
+        rightPane.style.display = 'none'
+        renderChecklist()
+      }
+    })
+    leftPane.appendChild(toggleBtn)
+
+    if (!artifact.content || artifact.content.trim().length === 0 || artifact.state === 'empty') {
+      const empty = document.createElement('div')
+      empty.className = 'empty-state'
+      empty.style.height = 'auto'
+      empty.style.padding = 'var(--space-8)'
+      empty.innerHTML = `
+        <h3 style="font-size: var(--text-lg); color: var(--color-text-secondary);">Tasks will appear here</h3>
+        <p style="color: var(--color-text-secondary); font-size: var(--text-sm);">Generate tasks from your plan to see an interactive checklist.</p>
+      `
+      leftPane.appendChild(empty)
+      return
+    }
+
+    const { groups, lines } = parseTaskMarkdown(artifact.content)
+
+    // Progress summary
+    const allItems = groups.flatMap(g => g.items)
+    const checkedCount = allItems.filter(t => t.checked).length
+    const totalCount = allItems.length
+
+    if (totalCount > 0) {
+      const progress = document.createElement('div')
+      progress.dataset.role = 'task-progress'
+      progress.style.marginBottom = 'var(--space-3)'
+      progress.style.fontSize = 'var(--text-sm)'
+      progress.style.color = 'var(--color-text-secondary)'
+
+      const pct = Math.round((checkedCount / totalCount) * 100)
+
+      const progressText = document.createElement('span')
+      progressText.dataset.role = 'task-progress-text'
+      progressText.textContent = `${checkedCount}/${totalCount} tasks complete (${pct}%)`
+      progress.appendChild(progressText)
+
+      const bar = document.createElement('div')
+      bar.style.height = '4px'
+      bar.style.borderRadius = '2px'
+      bar.style.background = 'var(--color-border, #333)'
+      bar.style.marginTop = 'var(--space-1)'
+      bar.style.overflow = 'hidden'
+
+      const fill = document.createElement('div')
+      fill.style.height = '100%'
+      fill.style.width = `${pct}%`
+      fill.style.background = 'var(--color-accent, #4a9eff)'
+      fill.style.borderRadius = '2px'
+      fill.style.transition = 'width 0.3s ease'
+      bar.appendChild(fill)
+
+      progress.appendChild(bar)
+      leftPane.appendChild(progress)
+    }
+
+    for (const group of groups) {
+      if (group.heading) {
+        const heading = document.createElement('h3')
+        heading.style.fontSize = 'var(--text-base)'
+        heading.style.fontWeight = '600'
+        heading.style.margin = 'var(--space-3) 0 var(--space-2) 0'
+        heading.style.color = 'var(--color-text)'
+        heading.textContent = group.heading
+        leftPane.appendChild(heading)
+      }
+
+      for (const item of group.items) {
+        const row = document.createElement('label')
+        row.style.display = 'flex'
+        row.style.alignItems = 'flex-start'
+        row.style.gap = 'var(--space-2)'
+        row.style.padding = 'var(--space-1) 0'
+        row.style.cursor = 'pointer'
+        row.style.fontSize = 'var(--text-sm)'
+        row.style.lineHeight = '1.5'
+
+        const checkbox = document.createElement('input')
+        checkbox.type = 'checkbox'
+        checkbox.checked = item.checked
+        checkbox.style.marginTop = '3px'
+        checkbox.style.flexShrink = '0'
+        checkbox.style.cursor = 'pointer'
+        checkbox.style.accentColor = 'var(--color-accent, #4a9eff)'
+
+        const labelSpan = document.createElement('span')
+        labelSpan.style.flex = '1'
+        labelSpan.textContent = item.label
+        if (item.checked) {
+          labelSpan.style.textDecoration = 'line-through'
+          labelSpan.style.opacity = '0.6'
+        }
+
+        checkbox.addEventListener('change', () => {
+          const nowChecked = checkbox.checked
+          // Update the markdown line
+          const oldLine = lines[item.lineIndex]
+          const newLine = nowChecked
+            ? oldLine.replace(/- \[ \]/, '- [x]')
+            : oldLine.replace(/- \[[xX]\]/, '- [ ]')
+          lines[item.lineIndex] = newLine
+
+          const newContent = lines.join('\n')
+          artifact.content = newContent
+          artifact.updatedAt = new Date().toISOString()
+          artifact.state = deriveArtifactState(newContent, artifact.type)
+
+          const st = getState()
+          const artifacts = new Map(st.artifacts)
+          artifacts.set(artifact.id, artifact)
+          // Direct update to avoid full re-render flicker
+          st.artifacts = artifacts
+
+          markDirty(artifact.id)
+
+          // Update visual state immediately
+          item.checked = nowChecked
+          labelSpan.style.textDecoration = nowChecked ? 'line-through' : 'none'
+          labelSpan.style.opacity = nowChecked ? '0.6' : '1'
+
+          // Update progress bar
+          const allChecked = groups.flatMap(g => g.items).filter(t => t.checked).length
+          const allTotal = groups.flatMap(g => g.items).length
+          const newPct = allTotal > 0 ? Math.round((allChecked / allTotal) * 100) : 0
+          const progressTextEl = leftPane.querySelector('[data-role="task-progress-text"]')
+          if (progressTextEl) {
+            progressTextEl.textContent = `${allChecked}/${allTotal} tasks complete (${newPct}%)`
+          }
+          const fillEl = leftPane.querySelector('[data-role="task-progress"] div > div') as HTMLElement
+          if (fillEl) fillEl.style.width = `${newPct}%`
+        })
+
+        row.appendChild(checkbox)
+        row.appendChild(labelSpan)
+        leftPane.appendChild(row)
+      }
+    }
+  }
+
+  rightPane.style.display = 'none'
+  renderChecklist()
 }
 
 /** Render sanitized HTML preview (markdownToHtml uses DOMPurify) */
