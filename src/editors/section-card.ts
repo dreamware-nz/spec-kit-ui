@@ -1,4 +1,26 @@
-import type { Section } from '../models/artifact'
+import type { Section, Invariant, EntityLifecycle, SystemBehavior } from '../models/artifact'
+import { renderInvariantEditor } from './invariant'
+import { renderLifecycleEditor } from './lifecycle'
+import { renderBehaviorEditor } from './behavior'
+import { renderDesignLanguageEditor } from './design-lang'
+
+type StructuredData = Invariant[] | EntityLifecycle | SystemBehavior[]
+
+function isInvariantSection(title: string): boolean {
+  return /invariants?$/i.test(title.trim())
+}
+
+function isLifecycleSection(title: string): boolean {
+  return /entity\s+lifecycles?$/i.test(title.trim())
+}
+
+function isBehaviorSection(title: string): boolean {
+  return /system\s+behaviors?$/i.test(title.trim())
+}
+
+function isDesignLanguageSection(title: string): boolean {
+  return /design\s+language$/i.test(title.trim())
+}
 
 export function renderSectionCard(
   section: Section,
@@ -48,16 +70,40 @@ export function renderSectionCard(
   body.setAttribute('role', 'region')
   body.setAttribute('aria-label', section.title)
 
-  const textarea = document.createElement('textarea')
-  textarea.className = 'textarea'
-  textarea.value = section.content
-  textarea.rows = 8
+  // T045: Choose structured editor or textarea based on section title
+  if (isInvariantSection(section.title)) {
+    const editor = renderInvariantEditor(section, (_data: StructuredData) => {
+      onUpdate(index, section.content)
+    })
+    body.appendChild(editor)
+  } else if (isLifecycleSection(section.title)) {
+    const editor = renderLifecycleEditor(section, (_data: StructuredData) => {
+      onUpdate(index, section.content)
+    })
+    body.appendChild(editor)
+  } else if (isBehaviorSection(section.title)) {
+    const editor = renderBehaviorEditor(section, (_data: StructuredData) => {
+      onUpdate(index, section.content)
+    })
+    body.appendChild(editor)
+  } else if (isDesignLanguageSection(section.title)) {
+    const editor = renderDesignLanguageEditor(section, (_content: string) => {
+      onUpdate(index, section.content)
+    })
+    body.appendChild(editor)
+  } else {
+    const textarea = document.createElement('textarea')
+    textarea.className = 'textarea'
+    textarea.value = section.content
+    textarea.rows = 8
 
-  textarea.addEventListener('input', () => {
-    onUpdate(index, textarea.value)
-  })
+    textarea.addEventListener('input', () => {
+      onUpdate(index, textarea.value)
+    })
 
-  body.appendChild(textarea)
+    body.appendChild(textarea)
+  }
+
   card.appendChild(body)
 
   // Toggle collapse/expand
@@ -66,7 +112,8 @@ export function renderSectionCard(
     card.classList.toggle('expanded')
     header.setAttribute('aria-expanded', String(!section.collapsed))
     if (!section.collapsed) {
-      textarea.focus()
+      const firstInput = body.querySelector<HTMLElement>('textarea, input, select')
+      if (firstInput) firstInput.focus()
     }
   })
 

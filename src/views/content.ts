@@ -4,7 +4,7 @@ import { parseMarkdownSections, parseSectionsToMarkdown } from '../parsers/spec-
 import { markdownToHtml } from '../parsers/markdown-io'
 import { renderSectionCard } from '../editors/section-card'
 import { deriveArtifactState } from '../models/pipeline'
-import type { Artifact } from '../models/artifact'
+import type { Artifact, Section } from '../models/artifact'
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 let currentEditorView: import('@codemirror/view').EditorView | null = null
@@ -102,6 +102,24 @@ export function renderContentPanel(container: HTMLElement): void {
   render()
 }
 
+/** Check if a section is a user story */
+function isUserStory(section: Section): boolean {
+  return /^User Story/i.test(section.title)
+}
+
+/** Update priority labels in user story titles (P1, P2, ...) */
+function updatePriorityLabels(sections: Section[]): void {
+  let priority = 1
+  for (const section of sections) {
+    if (isUserStory(section)) {
+      // Replace existing priority label or add one
+      section.title = section.title.replace(/\s*\(P\d+\)\s*$/, '')
+      section.title = `${section.title} (P${priority})`
+      priority++
+    }
+  }
+}
+
 function renderSpecSections(
   leftPane: HTMLElement,
   rightPane: HTMLElement,
@@ -109,29 +127,95 @@ function renderSpecSections(
 ): void {
   const sections = parseMarkdownSections(artifact.content)
 
+  function handleSectionUpdate(index: number, content: string): void {
+    sections[index].content = content
+
+    // T029: Re-serialize and update artifact
+    const newContent = parseSectionsToMarkdown(sections)
+    artifact.content = newContent
+    artifact.updatedAt = new Date().toISOString()
+
+    // T033: Recalculate artifact state
+    artifact.state = deriveArtifactState(newContent, artifact.type)
+
+    const state = getState()
+    const artifacts = new Map(state.artifacts)
+    artifacts.set(artifact.id, artifact)
+    // Update state without triggering full re-render via direct map update
+    state.artifacts = artifacts
+
+    markDirty(artifact.id)
+
+    // Debounced preview update
+    updatePreviewDebounced(rightPane, newContent)
+  }
+
+  // T044: Track drag state for user story reordering
+  let dragSourceIndex: number | null = null
+
   for (let i = 0; i < sections.length; i++) {
-    const card = renderSectionCard(sections[i], i, (index, content) => {
-      sections[index].content = content
+    const card = renderSectionCard(sections[i], i, handleSectionUpdate)
 
-      // T029: Re-serialize and update artifact
-      const newContent = parseSectionsToMarkdown(sections)
-      artifact.content = newContent
-      artifact.updatedAt = new Date().toISOString()
+    // T044: Make user story sections draggable
+    if (isUserStory(sections[i])) {
+      card.draggable = true
+      card.dataset.sectionIndex = String(i)
 
-      // T033: Recalculate artifact state
-      artifact.state = deriveArtifactState(newContent, artifact.type)
+      card.addEventListener('dragstart', (e: DragEvent) => {
+        dragSourceIndex = i
+        card.style.opacity = '0.5'
+        e.dataTransfer?.setData('text/plain', String(i))
+      })
 
-      const state = getState()
-      const artifacts = new Map(state.artifacts)
-      artifacts.set(artifact.id, artifact)
-      // Update state without triggering full re-render via direct map update
-      state.artifacts = artifacts
+      card.addEventListener('dragend', () => {
+        card.style.opacity = '1'
+        dragSourceIndex = null
+        // Clean up all drop indicators
+        leftPane.querySelectorAll('.section-card').forEach(el => {
+          ;(el as HTMLElement).style.borderTop = ''
+        })
+      })
 
-      markDirty(artifact.id)
+      card.addEventListener('dragover', (e: DragEvent) => {
+        if (dragSourceIndex === null) return
+        // Only allow drop on other user story cards
+        if (!isUserStory(sections[i])) return
+        e.preventDefault()
+        card.style.borderTop = '3px solid var(--color-accent)'
+      })
 
-      // Debounced preview update
-      updatePreviewDebounced(rightPane, newContent)
-    })
+      card.addEventListener('dragleave', () => {
+        card.style.borderTop = ''
+      })
+
+      card.addEventListener('drop', (e: DragEvent) => {
+        e.preventDefault()
+        card.style.borderTop = ''
+        if (dragSourceIndex === null || dragSourceIndex === i) return
+
+        // Reorder sections
+        const [movedSection] = sections.splice(dragSourceIndex, 1)
+        const targetIdx = dragSourceIndex < i ? i - 1 : i
+        sections.splice(targetIdx, 0, movedSection)
+
+        // Update priority labels
+        updatePriorityLabels(sections)
+
+        // Re-serialize
+        const newContent = parseSectionsToMarkdown(sections)
+        artifact.content = newContent
+        artifact.updatedAt = new Date().toISOString()
+        artifact.state = deriveArtifactState(newContent, artifact.type)
+
+        const state = getState()
+        const artifacts = new Map(state.artifacts)
+        artifacts.set(artifact.id, artifact)
+        setState({ artifacts })
+
+        markDirty(artifact.id)
+      })
+    }
+
     leftPane.appendChild(card)
   }
 
