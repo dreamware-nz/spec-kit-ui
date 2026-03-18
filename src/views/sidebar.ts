@@ -708,6 +708,20 @@ export function renderSidebar(container: HTMLElement): void {
           stageIsComplete = specArtifact.state === 'complete' || specArtifact.state === 'draft'
         }
       }
+      // Special case: Plan is "complete" if plan.md exists with real content
+      if (stage === 'plan') {
+        const planArtifact = projectArtifacts.find(a => a.type === 'plan')
+        if (planArtifact && planArtifact.content && planArtifact.state !== 'empty') {
+          stageIsComplete = true
+        }
+      }
+      // Special case: Tasks is "complete" if tasks.md exists with real content
+      if (stage === 'tasks') {
+        const tasksArtifact = projectArtifacts.find(a => a.type === 'tasks')
+        if (tasksArtifact && tasksArtifact.content && tasksArtifact.state !== 'empty') {
+          stageIsComplete = true
+        }
+      }
 
       if (stageIsComplete) {
         dot.classList.add('pipeline-dot--complete')
