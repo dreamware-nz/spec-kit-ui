@@ -1,6 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb'
 import type { Project } from '../models/project'
 import type { Artifact } from '../models/artifact'
+import type { Conversation } from '../models/conversation'
 
 interface SpecWorkbenchDB {
   projects: {
@@ -20,22 +21,36 @@ interface SpecWorkbenchDB {
       'by-updated': string
     }
   }
+  conversations: {
+    key: string
+    value: Conversation
+    indexes: {
+      'by-project': string
+    }
+  }
 }
 
 let dbInstance: IDBPDatabase<SpecWorkbenchDB> | null = null
 
 export async function getDB(): Promise<IDBPDatabase<SpecWorkbenchDB>> {
   if (dbInstance) return dbInstance
-  dbInstance = await openDB<SpecWorkbenchDB>('spec-workbench', 1, {
-    upgrade(db) {
-      const projectStore = db.createObjectStore('projects', { keyPath: 'id' })
-      projectStore.createIndex('by-updated', 'updatedAt')
-      projectStore.createIndex('by-name', 'name')
+  dbInstance = await openDB<SpecWorkbenchDB>('spec-workbench', 2, {
+    upgrade(db, oldVersion) {
+      if (oldVersion < 1) {
+        const projectStore = db.createObjectStore('projects', { keyPath: 'id' })
+        projectStore.createIndex('by-updated', 'updatedAt')
+        projectStore.createIndex('by-name', 'name')
 
-      const artifactStore = db.createObjectStore('artifacts', { keyPath: 'id' })
-      artifactStore.createIndex('by-project', 'projectId')
-      artifactStore.createIndex('by-project-type', ['projectId', 'type'])
-      artifactStore.createIndex('by-updated', 'updatedAt')
+        const artifactStore = db.createObjectStore('artifacts', { keyPath: 'id' })
+        artifactStore.createIndex('by-project', 'projectId')
+        artifactStore.createIndex('by-project-type', ['projectId', 'type'])
+        artifactStore.createIndex('by-updated', 'updatedAt')
+      }
+
+      if (oldVersion < 2) {
+        const conversationStore = db.createObjectStore('conversations', { keyPath: 'id' })
+        conversationStore.createIndex('by-project', 'projectId')
+      }
     },
   })
   return dbInstance
@@ -75,6 +90,8 @@ export async function deleteProject(id: string): Promise<void> {
     await tx.store.delete(a.id)
   }
   await tx.done
+  // Also delete all conversations for this project
+  await deleteConversationsByProject(id)
 }
 
 // Artifact CRUD
@@ -111,6 +128,32 @@ export async function deleteArtifact(id: string): Promise<void> {
   await db.delete('artifacts', id)
 }
 
+// Conversation CRUD
+export async function getConversationByProject(projectId: string): Promise<Conversation | undefined> {
+  const db = await getDB()
+  const conversations = await db.getAllFromIndex('conversations', 'by-project', projectId)
+  // Return the most recent conversation for this project
+  if (conversations.length === 0) return undefined
+  return conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+}
+
+export async function saveConversation(conversation: Conversation): Promise<Conversation> {
+  const db = await getDB()
+  conversation.updatedAt = new Date().toISOString()
+  await db.put('conversations', conversation)
+  return conversation
+}
+
+export async function deleteConversationsByProject(projectId: string): Promise<void> {
+  const db = await getDB()
+  const conversations = await db.getAllFromIndex('conversations', 'by-project', projectId)
+  const tx = db.transaction('conversations', 'readwrite')
+  for (const c of conversations) {
+    await tx.store.delete(c.id)
+  }
+  await tx.done
+}
+
 // For testing: close and clear
 export async function clearDB(): Promise<void> {
   const db = await getDB()
@@ -120,6 +163,9 @@ export async function clearDB(): Promise<void> {
   const tx2 = db.transaction('artifacts', 'readwrite')
   await tx2.store.clear()
   await tx2.done
+  const tx3 = db.transaction('conversations', 'readwrite')
+  await tx3.store.clear()
+  await tx3.done
 }
 
 export function closeDB(): void {

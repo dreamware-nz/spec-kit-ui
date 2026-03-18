@@ -1,6 +1,7 @@
 import type { Project } from '../models/project'
 import type { Artifact } from '../models/artifact'
 import type { PipelineStage } from '../models/project'
+import type { Conversation } from '../models/conversation'
 
 export interface Toast {
   id: string
@@ -16,6 +17,10 @@ export interface AppState {
   projects: Project[]
   artifacts: Map<string, Artifact>
   toasts: Toast[]
+  conversation: Conversation | null
+  focusSection: string | null
+  chatStatus: 'idle' | 'awaiting-response' | 'error'
+  chatError: string | null
 }
 
 type Listener = (state: AppState) => void
@@ -29,6 +34,10 @@ const state: AppState = {
   projects: [],
   artifacts: new Map(),
   toasts: [],
+  conversation: null,
+  focusSection: null,
+  chatStatus: 'idle',
+  chatError: null,
 }
 
 export function getState(): AppState {

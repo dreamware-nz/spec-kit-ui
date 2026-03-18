@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.79.0",
     "@codemirror/lang-markdown": "^6.5.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.40.0",
