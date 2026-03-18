@@ -186,7 +186,25 @@ function renderSpecSections(
   rightPane: HTMLElement,
   artifact: Artifact,
 ): void {
-  const sections = parseMarkdownSections(artifact.content)
+  const rawSections = parseMarkdownSections(artifact.content)
+
+  // Deduplicate sections with the same title (LLM can create duplicates via append)
+  const seen = new Map<string, number>()
+  const sections: Section[] = []
+  for (const section of rawSections) {
+    const key = section.title.toLowerCase().replace(/\s*\*?\(mandatory\)\*?\s*/g, '').trim()
+      + ':' + section.headingLevel
+    const existingIdx = seen.get(key)
+    if (existingIdx !== undefined) {
+      const existing = sections[existingIdx]
+      if (section.content.trim() && section.content.trim() !== existing.content.trim()) {
+        existing.content = existing.content.trim() + '\n\n' + section.content.trim()
+      }
+    } else {
+      seen.set(key, sections.length)
+      sections.push({ ...section })
+    }
+  }
 
   // Ensure all sections start collapsed
   for (const section of sections) {

@@ -12,19 +12,38 @@ export function deriveFeatureName(content: string): string {
   if (!content) return 'Untitled'
   const sections = parseMarkdownSections(content)
   let raw = ''
+
+  // 1. Try the h1 title first
   if (sections.length > 0) {
-    raw = sections[0].title
+    raw = sections[0].title.replace(/^Feature\s+Specification\s*:\s*/i, '').trim()
   }
-  if (!raw) {
-    raw = content.split('\n')[0]?.replace(/^#+\s*/, '').trim() || ''
+
+  // 2. If h1 is a placeholder, try the Overview section content (first sentence)
+  if (!raw || /^\[.*\]$/.test(raw)) {
+    const overview = sections.find(s => /overview/i.test(s.title))
+    if (overview && overview.content) {
+      const firstSentence = overview.content
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/\[.*?\]/g, '')
+        .trim()
+        .split(/[.!?\n]/)[0]
+        ?.trim()
+      if (firstSentence && firstSentence.length > 5 && !/^\[/.test(firstSentence)) {
+        raw = firstSentence.length > 50 ? firstSentence.slice(0, 50) : firstSentence
+      }
+    }
   }
-  if (!raw) return 'Untitled'
 
-  // Strip "Feature Specification:" prefix
-  raw = raw.replace(/^Feature\s+Specification\s*:\s*/i, '').trim()
+  // 3. If still no name, try the first user story title
+  if (!raw || /^\[.*\]$/.test(raw)) {
+    const story = sections.find(s => /user story/i.test(s.title))
+    if (story) {
+      const match = story.title.match(/User Story \d+\s*-\s*(.+?)(?:\s*\(|$)/i)
+      if (match) raw = match[1].trim()
+    }
+  }
 
-  // Template default placeholder
-  if (/^\[.*\]$/.test(raw) || !raw) return 'New Feature'
+  if (!raw || /^\[.*\]$/.test(raw)) return 'New Feature'
 
   // Strip common leading articles
   raw = raw.replace(/^(a|an|the)\s+/i, '').trim()
