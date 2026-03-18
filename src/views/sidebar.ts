@@ -521,7 +521,14 @@ export function renderSidebar(container: HTMLElement): void {
       currentProjectId: project.id,
       currentStage: project.currentStage,
       currentArtifactId: artifact.id,
+      conversation: null,
+      focusSection: null,
+      chatStatus: 'idle' as const,
+      chatError: null,
     })
+
+    // Switch chat to the new project's feature — triggers fresh conversation
+    await switchChatToFeature(artifact.id)
 
     addToast(`Created project "${name}"`, 'success')
   }

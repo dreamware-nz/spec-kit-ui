@@ -15,7 +15,7 @@ import { createProjectInDB, createArtifactInDB, getConversationByArtifact, saveC
 import { renderApiKeyModal } from './api-key-modal'
 import { deriveFeatureName, gatherAllGlossaryTerms, findCrossFeatureEntities } from './feature-tabs'
 
-const WELCOME_MESSAGE = "Hey there! I'm your specification assistant. Tell me about the product or feature you'd like to build, and I'll help you shape it into a clear, detailed spec. Just describe your idea in a few sentences to get started."
+const WELCOME_MESSAGE = "Welcome! Let's start by understanding your product.\n\n**Tell me:**\n- What are you building?\n- Who is it for?\n- What problem does it solve?\n\nOnce I understand the big picture, I'll help you break it into features and we'll spec them out one by one."
 
 let messageList: HTMLElement | null = null
 let typingIndicator: HTMLElement | null = null
