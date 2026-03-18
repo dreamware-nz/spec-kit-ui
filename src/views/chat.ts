@@ -780,6 +780,19 @@ export function handleStageTransition(stage: import('../models/project').Pipelin
 
   // Show toast
   addToast(`Switched to ${stageLabel} stage`, 'info')
+
+  // Auto-send a stage transition prompt to get the LLM to initiate
+  const stagePrompts: Record<string, string> = {
+    clarify: 'We\'re now in the Clarify stage. Review the spec we\'ve built so far and identify any ambiguities, missing details, or areas that need clarification. Ask me targeted questions to resolve them.',
+    plan: 'We\'re now in the Plan stage. Based on the spec, help me make technical decisions — tech stack, architecture, data model, and key implementation choices.',
+    tasks: 'We\'re now in the Tasks stage. Break the plan into actionable, ordered tasks that a developer could pick up and implement.',
+  }
+
+  const autoPrompt = stagePrompts[stage]
+  if (autoPrompt) {
+    // Small delay so the UI settles before sending
+    setTimeout(() => sendUserMessage(autoPrompt), 300)
+  }
 }
 
 // --- Helpers ---
