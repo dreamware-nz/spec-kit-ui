@@ -1,6 +1,6 @@
 import { getState, setState, subscribe } from '../store/state'
 import { markDirty, markConversationDirty } from '../store/sync'
-import { sendMessage } from '../llm/client'
+import { sendMessage, abortStream } from '../llm/client'
 import { buildSystemPrompt } from '../llm/system-prompt'
 import { createResponseParser } from '../llm/response-parser'
 import { hasApiKey } from '../llm/config'
@@ -13,6 +13,7 @@ import { createProject } from '../models/project'
 import { createArtifact } from '../models/artifact'
 import { createProjectInDB, createArtifactInDB, getConversationByProject, saveConversation } from '../store/db'
 import { renderApiKeyModal } from './api-key-modal'
+import { deriveFeatureName, gatherAllGlossaryTerms, findCrossFeatureEntities } from './feature-tabs'
 
 const WELCOME_MESSAGE = "Welcome to Spec Workbench! Tell me about what you want to build. Describe your idea in a few sentences and I'll help you develop it into a proper specification."
 
@@ -23,6 +24,12 @@ let textarea: HTMLTextAreaElement | null = null
 let streamingBubble: HTMLElement | null = null
 let streamingText = ''
 let lastUserMessageContent = ''
+/** T039: Track whether user is scrolled to bottom */
+let userAtBottom = true
+/** T039: Scroll-to-bottom button */
+let scrollBottomBtn: HTMLElement | null = null
+/** T040: Aria-live region for screen reader announcements */
+let ariaLiveRegion: HTMLElement | null = null
 
 export function renderChatPanel(container: HTMLElement): void {
   // Clear container safely
@@ -30,12 +37,35 @@ export function renderChatPanel(container: HTMLElement): void {
     container.removeChild(container.firstChild)
   }
 
+  // T040: Aria-live region for accessibility announcements
+  const liveRegion = document.createElement('div')
+  liveRegion.setAttribute('role', 'status')
+  liveRegion.setAttribute('aria-live', 'polite')
+  liveRegion.className = 'sr-only'
+  liveRegion.style.position = 'absolute'
+  liveRegion.style.width = '1px'
+  liveRegion.style.height = '1px'
+  liveRegion.style.overflow = 'hidden'
+  liveRegion.style.clip = 'rect(0,0,0,0)'
+  ariaLiveRegion = liveRegion
+  container.appendChild(liveRegion)
+
   // Message list
   const messages = document.createElement('div')
   messages.className = 'chat-messages'
   messages.setAttribute('role', 'log')
   messages.setAttribute('aria-label', 'Chat messages')
+  messages.setAttribute('aria-live', 'polite')
   messageList = messages
+
+  // T039: Track scroll position
+  messages.addEventListener('scroll', () => {
+    const threshold = 50
+    userAtBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < threshold
+    if (scrollBottomBtn) {
+      scrollBottomBtn.style.display = userAtBottom ? 'none' : 'block'
+    }
+  })
 
   // Typing indicator (hidden by default)
   const typing = document.createElement('div')
@@ -46,6 +76,30 @@ export function renderChatPanel(container: HTMLElement): void {
     typing.appendChild(document.createElement('span'))
   }
   typingIndicator = typing
+
+  // T039: Scroll-to-bottom button
+  const scrollBtn = document.createElement('button')
+  scrollBtn.className = 'chat-scroll-bottom-btn'
+  scrollBtn.textContent = '\u2193'
+  scrollBtn.title = 'Jump to bottom'
+  scrollBtn.setAttribute('aria-label', 'Jump to latest messages')
+  scrollBtn.style.display = 'none'
+  scrollBtn.style.position = 'absolute'
+  scrollBtn.style.bottom = '70px'
+  scrollBtn.style.right = 'var(--space-4)'
+  scrollBtn.style.zIndex = '10'
+  scrollBtn.style.width = '32px'
+  scrollBtn.style.height = '32px'
+  scrollBtn.style.borderRadius = '50%'
+  scrollBtn.style.border = '1px solid var(--color-border)'
+  scrollBtn.style.background = 'var(--color-surface)'
+  scrollBtn.style.cursor = 'pointer'
+  scrollBtn.style.fontSize = 'var(--text-lg)'
+  scrollBtn.style.color = 'var(--color-text)'
+  scrollBtn.addEventListener('click', () => {
+    scrollToBottom()
+  })
+  scrollBottomBtn = scrollBtn
 
   // Input area
   const inputArea = document.createElement('div')
@@ -67,7 +121,17 @@ export function renderChatPanel(container: HTMLElement): void {
   inputArea.appendChild(input)
   inputArea.appendChild(send)
 
-  container.appendChild(messages)
+  // Need relative positioning for scroll button
+  const messagesWrapper = document.createElement('div')
+  messagesWrapper.style.position = 'relative'
+  messagesWrapper.style.flex = '1'
+  messagesWrapper.style.overflow = 'hidden'
+  messagesWrapper.style.display = 'flex'
+  messagesWrapper.style.flexDirection = 'column'
+  messagesWrapper.appendChild(messages)
+  messagesWrapper.appendChild(scrollBtn)
+
+  container.appendChild(messagesWrapper)
   container.appendChild(inputArea)
 
   // Auto-grow textarea
@@ -82,6 +146,25 @@ export function renderChatPanel(container: HTMLElement): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  })
+
+  // T038: Escape to cancel streaming
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const state = getState()
+      if (state.chatStatus === 'awaiting-response') {
+        e.preventDefault()
+        abortStream()
+        setState({ chatStatus: 'idle' })
+        if (sendBtn) sendBtn.disabled = false
+        if (typingIndicator) typingIndicator.style.display = 'none'
+        // Keep partial response
+        if (streamingBubble && streamingText) {
+          finalizeStreamingMessage()
+        }
+        announce('Streaming cancelled')
+      }
     }
   })
 
@@ -164,6 +247,10 @@ function handleSend(): void {
   } else {
     void sendUserMessage(text)
   }
+
+  // T040: Focus returns to input after sending
+  textarea.focus()
+  announce('Message sent')
 }
 
 async function createProjectFromIdea(idea: string): Promise<void> {
@@ -223,22 +310,36 @@ async function sendUserMessage(text: string): Promise<void> {
   messageList?.appendChild(typingIndicator!)
   scrollToBottom()
 
-  // Build system prompt
+  // Build system prompt with enhanced context
   const specArtifact = getSpecArtifact()
   const specContent = specArtifact?.content || ''
   const focusSection = state.focusSection
   const pipelineStage = conversation.pipelineStage || 'specify'
 
-  // Extract glossary terms
-  const glossaryTerms = extractGlossaryTerms(specContent)
+  // T025: Gather glossary terms from ALL features
+  const glossaryTerms = state.currentProjectId
+    ? gatherAllGlossaryTerms(state.currentProjectId, state.artifacts)
+    : extractGlossaryTerms(specContent)
 
-  const systemPrompt = buildSystemPrompt(specContent, focusSection, pipelineStage, glossaryTerms)
+  // T024: Build summaries of other features
+  const otherFeatureSummaries = buildOtherFeatureSummaries()
 
-  // Build API messages
-  const apiMessages = conversation.messages.map(m => ({
-    role: m.role as 'user' | 'assistant',
-    content: m.content,
-  }))
+  // T025: Cross-feature entity names
+  const crossFeatureEntityNames = buildCrossFeatureEntityList()
+
+  // T029: Compute coverage for safety-net
+  const { coveragePercent, uncoveredSections } = computeCoverage(specContent)
+
+  const systemPrompt = buildSystemPrompt(specContent, focusSection, pipelineStage, glossaryTerms, {
+    otherFeatureSummaries,
+    crossFeatureEntities: crossFeatureEntityNames,
+    coveragePercent,
+    uncoveredSections,
+    safetyNetFired: conversation.safetyNetFired || false,
+  })
+
+  // T042: Trim conversation for API (context window management)
+  const apiMessages = trimConversationForAPI(conversation.messages)
 
   // Setup streaming
   streamingText = ''
@@ -263,7 +364,7 @@ async function sendUserMessage(text: string): Promise<void> {
       const wrapper = document.createElement('div')
       wrapper.insertAdjacentHTML('afterbegin', sanitizedHtml)
       streamingBubble.appendChild(wrapper)
-      scrollToBottom()
+      if (userAtBottom) scrollToBottom()
     },
     onSpecUpdate: (update: SpecUpdate) => {
       collectedUpdates.push(update)
@@ -291,13 +392,20 @@ async function sendUserMessage(text: string): Promise<void> {
       // Save conversation
       markConversationDirty()
 
+      // T029: Check if safety-net should fire
+      if (coveragePercent >= 80 && !conversation!.safetyNetFired) {
+        conversation!.safetyNetFired = true
+        markConversationDirty()
+      }
+
       // Reset status
       setState({ chatStatus: 'idle', chatError: null })
       if (sendBtn) sendBtn.disabled = false
       if (typingIndicator) typingIndicator.style.display = 'none'
       streamingBubble = null
       streamingText = ''
-      scrollToBottom()
+      if (userAtBottom) scrollToBottom()
+      announce('Response received')
     },
     // onError
     (error: Error) => {
@@ -316,13 +424,30 @@ async function sendUserMessage(text: string): Promise<void> {
   )
 }
 
+/** Finalize a partial streaming message (e.g., after Escape cancellation) */
+function finalizeStreamingMessage(): void {
+  const state = getState()
+  const conversation = state.conversation
+  if (!conversation) return
+
+  const assistantMsg = createMessage('assistant', streamingText, [])
+  conversation.messages.push(assistantMsg)
+  markConversationDirty()
+  streamingBubble = null
+  streamingText = ''
+}
+
 // --- T016: Spec update application ---
 
 function applySpecUpdate(update: SpecUpdate): void {
-  const specArtifact = getSpecArtifact()
-  if (!specArtifact) return
+  const state = getState()
+  const pipelineStage = state.conversation?.pipelineStage || state.currentStage
 
-  const sections = parseMarkdownSections(specArtifact.content)
+  // T035: Route to correct artifact based on current stage
+  const artifact = pipelineStage === 'plan' ? getPlanArtifact() : getSpecArtifact()
+  if (!artifact) return
+
+  const sections = parseMarkdownSections(artifact.content)
 
   // Fuzzy match: check if update.section is contained in any section title
   const matchIndex = sections.findIndex(s =>
@@ -349,17 +474,16 @@ function applySpecUpdate(update: SpecUpdate): void {
 
   // Re-serialize
   const newContent = parseSectionsToMarkdown(sections)
-  specArtifact.content = newContent
-  specArtifact.updatedAt = new Date().toISOString()
+  artifact.content = newContent
+  artifact.updatedAt = new Date().toISOString()
 
   // Update in state
-  const state = getState()
   const artifacts = new Map(state.artifacts)
-  artifacts.set(specArtifact.id, specArtifact)
+  artifacts.set(artifact.id, artifact)
   setState({ artifacts })
 
   // Mark dirty for auto-save
-  markDirty(specArtifact.id)
+  markDirty(artifact.id)
 
   // T017: Trigger highlight on the updated section card
   highlightSection(update.section)
@@ -448,7 +572,7 @@ function appendUpdateIndicator(sectionName: string): void {
   indicator.style.alignSelf = 'flex-start'
   indicator.textContent = `Updated: ${sectionName}`
   messageList.appendChild(indicator)
-  scrollToBottom()
+  if (userAtBottom) scrollToBottom()
 }
 
 // --- T018: Focus indicator in chat ---
@@ -463,7 +587,9 @@ function appendFocusIndicator(sectionName: string): void {
   indicator.style.alignSelf = 'center'
   indicator.textContent = `Focus: ${sectionName}`
   messageList.appendChild(indicator)
-  scrollToBottom()
+  if (userAtBottom) scrollToBottom()
+  // T040: Announce focus change
+  announce(`Now discussing ${sectionName}`)
 }
 
 // --- T021: Error message with retry ---
@@ -509,6 +635,45 @@ function appendErrorMessage(errorText: string): void {
   messageList.appendChild(errorDiv)
 }
 
+// --- T033: Pipeline stage transition ---
+
+export function transitionToStage(stage: import('../models/project').PipelineStage): void {
+  const state = getState()
+  if (!state.conversation) return
+
+  // Update conversation pipeline stage
+  state.conversation.pipelineStage = stage
+  markConversationDirty()
+
+  // Update project current stage
+  setState({ currentStage: stage })
+
+  // Find or set the appropriate artifact for the new stage
+  if (state.currentProjectId) {
+    const stageArtifacts = [...state.artifacts.values()].filter(
+      a => a.projectId === state.currentProjectId && a.stage === stage
+    )
+    if (stageArtifacts.length > 0) {
+      setState({ currentArtifactId: stageArtifacts[0].id })
+    }
+  }
+
+  // Add a visual separator
+  if (messageList) {
+    const separator = document.createElement('div')
+    separator.style.fontSize = 'var(--text-xs)'
+    separator.style.color = 'var(--color-accent)'
+    separator.style.textAlign = 'center'
+    separator.style.padding = 'var(--space-2) 0'
+    separator.style.borderTop = '1px dashed var(--color-border)'
+    separator.style.borderBottom = '1px dashed var(--color-border)'
+    separator.style.margin = 'var(--space-2) 0'
+    separator.textContent = `Transitioned to: ${stage.charAt(0).toUpperCase() + stage.slice(1)} stage`
+    messageList.appendChild(separator)
+    scrollToBottom()
+  }
+}
+
 // --- Helpers ---
 
 function scrollToBottom(): void {
@@ -520,8 +685,24 @@ function scrollToBottom(): void {
 function getSpecArtifact() {
   const state = getState()
   if (!state.currentProjectId) return null
+
+  // If current artifact is a spec, use it
+  if (state.currentArtifactId) {
+    const current = state.artifacts.get(state.currentArtifactId)
+    if (current && current.type === 'spec') return current
+  }
+
   return [...state.artifacts.values()].find(
     a => a.projectId === state.currentProjectId && a.type === 'spec'
+  ) || null
+}
+
+/** T035: Get plan artifact for plan-stage updates */
+function getPlanArtifact() {
+  const state = getState()
+  if (!state.currentProjectId) return null
+  return [...state.artifacts.values()].find(
+    a => a.projectId === state.currentProjectId && a.type === 'plan'
   ) || null
 }
 
@@ -531,7 +712,6 @@ function extractGlossaryTerms(specContent: string): string[] {
   const glossary = sections.find(s => s.title.toLowerCase().includes('glossary'))
   if (!glossary) return terms
 
-  // Parse table rows: | Term | Definition | ...
   const lines = glossary.content.split('\n')
   for (const line of lines) {
     const match = line.match(/^\|\s*\*?\*?([^|*]+)\*?\*?\s*\|/)
@@ -543,4 +723,110 @@ function extractGlossaryTerms(specContent: string): string[] {
     }
   }
   return terms
+}
+
+/** T024: Build summaries of other features for multi-feature context */
+function buildOtherFeatureSummaries(): string[] {
+  const state = getState()
+  if (!state.currentProjectId) return []
+
+  const summaries: string[] = []
+  const specArtifacts = [...state.artifacts.values()].filter(
+    a => a.projectId === state.currentProjectId && a.type === 'spec' && a.id !== state.currentArtifactId
+  )
+
+  for (const artifact of specArtifacts) {
+    const name = deriveFeatureName(artifact.content)
+    const sections = parseMarkdownSections(artifact.content)
+    const filled = sections.filter(s => s.content.trim().length > 20).length
+    summaries.push(`${name} (${filled}/${sections.length} sections filled)`)
+  }
+
+  return summaries
+}
+
+/** T025: Build list of entity names from other features */
+function buildCrossFeatureEntityList(): string[] {
+  const state = getState()
+  if (!state.currentProjectId) return []
+
+  const entityMap = findCrossFeatureEntities(state.currentProjectId, state.artifacts)
+  // Only include entities that appear in more than one feature
+  const shared: string[] = []
+  for (const [name, features] of entityMap) {
+    if (features.length > 1) {
+      shared.push(name)
+    }
+  }
+  return shared
+}
+
+/** T029: Compute coverage percentage and uncovered section names */
+function computeCoverage(specContent: string): { coveragePercent: number; uncoveredSections: string[] } {
+  if (!specContent) return { coveragePercent: 0, uncoveredSections: [] }
+
+  const sections = parseMarkdownSections(specContent)
+  const total = sections.length
+  if (total === 0) return { coveragePercent: 0, uncoveredSections: [] }
+
+  const filled = sections.filter(s => s.content.trim().length > 20)
+  const uncovered = sections.filter(s => s.content.trim().length <= 20).map(s => s.title)
+  const percent = Math.round((filled.length / total) * 100)
+
+  return { coveragePercent: percent, uncoveredSections: uncovered }
+}
+
+/**
+ * T041/T042: Trim conversation for API to manage context window.
+ * If conversation has >50 messages, summarize older messages into a context block.
+ * Send summary + last 20 messages.
+ */
+export function trimConversationForAPI(
+  messages: Message[],
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const MAX_MESSAGES = 50
+  const KEEP_RECENT = 20
+
+  const apiMessages = messages
+    .filter(m => !m.content.startsWith('---')) // Filter out separator messages
+    .map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+
+  if (apiMessages.length <= MAX_MESSAGES) {
+    return apiMessages
+  }
+
+  // Summarize older messages
+  const older = apiMessages.slice(0, apiMessages.length - KEEP_RECENT)
+  const recent = apiMessages.slice(apiMessages.length - KEEP_RECENT)
+
+  // Build a condensed summary of older messages
+  const summaryParts: string[] = []
+  for (const msg of older) {
+    if (msg.role === 'user') {
+      // Keep user topics, abbreviated
+      const abbreviated = msg.content.slice(0, 100)
+      summaryParts.push(`User discussed: ${abbreviated}`)
+    }
+  }
+  const summaryText = `[Conversation summary - ${older.length} earlier messages]\n${summaryParts.join('\n')}`
+
+  return [
+    { role: 'user', content: summaryText },
+    { role: 'assistant', content: 'I understand the context from our earlier discussion. Let me continue helping you.' },
+    ...recent,
+  ]
+}
+
+/** T040: Announce to screen readers via aria-live region */
+function announce(text: string): void {
+  if (ariaLiveRegion) {
+    ariaLiveRegion.textContent = text
+    // Clear after announcement to allow re-announcing same text
+    setTimeout(() => {
+      if (ariaLiveRegion) ariaLiveRegion.textContent = ''
+    }, 1000)
+  }
 }

@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { getLLMConfig } from './config'
 
+let currentAbortController: AbortController | null = null
+
 export async function validateApiKey(apiKey: string): Promise<boolean> {
   try {
     const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
@@ -28,13 +30,16 @@ export async function sendMessage(
   const config = getLLMConfig()
   const client = new Anthropic({ apiKey: config.apiKey, dangerouslyAllowBrowser: true })
 
+  // T038: Set up abort controller for Escape cancellation
+  currentAbortController = new AbortController()
+
   try {
     const stream = client.messages.stream({
       model: config.model,
       max_tokens: config.maxTokens,
       system: systemPrompt,
       messages,
-    })
+    }, { signal: currentAbortController.signal })
 
     let fullResponse = ''
 
@@ -44,15 +49,31 @@ export async function sendMessage(
     })
 
     stream.on('end', () => {
+      currentAbortController = null
       onComplete(fullResponse)
     })
 
     stream.on('error', (error) => {
+      currentAbortController = null
       onError(error instanceof Error ? error : new Error(String(error)))
     })
 
     await stream.finalMessage()
-  } catch (err) {
+  } catch (err: any) {
+    currentAbortController = null
+    // Don't report abort errors as failures
+    if (err?.name === 'AbortError' || err?.message?.includes('aborted')) {
+      onComplete('')
+      return
+    }
     onError(err instanceof Error ? err : new Error(String(err)))
+  }
+}
+
+/** T038: Abort the current streaming request */
+export function abortStream(): void {
+  if (currentAbortController) {
+    currentAbortController.abort()
+    currentAbortController = null
   }
 }
