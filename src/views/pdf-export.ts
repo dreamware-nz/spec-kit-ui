@@ -182,12 +182,44 @@ export function exportSpecAsPdf(specContent: string, projectName: string): void 
   // Ensure Overview comes right after the title (h1)
   const sections = parseMarkdownSections(sortedContent)
   const overviewIdx = sections.findIndex(s => /overview/i.test(s.title))
+
   if (overviewIdx > 1) {
-    // Move overview to position 1 (right after the h1 title)
+    // Move existing overview to position 1 (right after the h1 title)
     const [overview] = sections.splice(overviewIdx, 1)
     sections.splice(1, 0, overview)
-    sortedContent = parseSectionsToMarkdown(sections)
+  } else if (overviewIdx === -1) {
+    // No overview exists — synthesize one from the spec content
+    const featureTitle = sections[0]?.title?.replace(/^Feature Specification:\s*/i, '').trim() || projectName
+
+    // Gather summary material from existing sections
+    const stories = sections.filter(s => /user story/i.test(s.title))
+    const storyNames = stories.slice(0, 4).map(s => {
+      const match = s.title.match(/User Story \d+\s*-\s*(.+?)(?:\s*\(|$)/i)
+      return match ? match[1].trim() : ''
+    }).filter(Boolean)
+
+    const requirements = sections.find(s => /functional requirements/i.test(s.title))
+    const reqCount = requirements ? (requirements.content.match(/FR-\d+/g) || []).length : 0
+
+    let overviewText = `**${featureTitle}** is a feature`
+    if (storyNames.length > 0) {
+      overviewText += ` covering ${storyNames.join(', ')}`
+    }
+    if (reqCount > 0) {
+      overviewText += ` with ${reqCount} functional requirement${reqCount > 1 ? 's' : ''}`
+    }
+    overviewText += '.'
+
+    sections.splice(1, 0, {
+      headingLevel: 2,
+      title: 'Overview',
+      content: overviewText,
+      structuredData: null,
+      collapsed: false,
+    })
   }
+
+  sortedContent = parseSectionsToMarkdown(sections)
 
   const htmlContent = markdownToHtml(sortedContent)
 
