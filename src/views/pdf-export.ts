@@ -1,5 +1,64 @@
 import { markdownToHtml } from '../parsers/markdown-io'
+import { parseMarkdownSections, parseSectionsToMarkdown } from '../parsers/spec-parser'
 import { addToast } from '../store/state'
+
+function sortUserStories(markdown: string): string {
+  const sections = parseMarkdownSections(markdown)
+
+  // Find the parent "User Scenarios" section and its child user stories
+  let parentIdx = -1
+  for (let i = 0; i < sections.length; i++) {
+    if (/user scenarios/i.test(sections[i].title)) {
+      parentIdx = i
+      break
+    }
+  }
+  if (parentIdx === -1) return markdown
+
+  // Collect user story sections (h3s that follow the parent h2)
+  const parentLevel = sections[parentIdx].headingLevel
+  const storyStart = parentIdx + 1
+  let storyEnd = storyStart
+
+  const stories: typeof sections = []
+  const nonStories: typeof sections = []
+
+  for (let i = storyStart; i < sections.length; i++) {
+    if (sections[i].headingLevel <= parentLevel) break
+    storyEnd = i + 1
+    if (/user story/i.test(sections[i].title)) {
+      stories.push(sections[i])
+    } else {
+      nonStories.push(sections[i])
+    }
+  }
+
+  if (stories.length <= 1) return markdown
+
+  // Sort by priority: extract P1, P2, P3 etc. from title
+  stories.sort((a, b) => {
+    const pa = a.title.match(/P(\d+)/i)
+    const pb = b.title.match(/P(\d+)/i)
+    const na = pa ? parseInt(pa[1], 10) : 999
+    const nb = pb ? parseInt(pb[1], 10) : 999
+    return na - nb
+  })
+
+  // Renumber: User Story 1, User Story 2, etc.
+  stories.forEach((story, idx) => {
+    story.title = story.title.replace(/User Story \d+/i, `User Story ${idx + 1}`)
+  })
+
+  // Reassemble: before parent, parent, sorted stories, non-stories (edge cases etc), rest
+  const result = [
+    ...sections.slice(0, storyStart),
+    ...stories,
+    ...nonStories,
+    ...sections.slice(storyEnd),
+  ]
+
+  return parseSectionsToMarkdown(result)
+}
 
 const PRINT_STYLES = `
   @page {
@@ -111,7 +170,9 @@ const PRINT_STYLES = `
 
 export function exportSpecAsPdf(specContent: string, projectName: string): void {
   // Convert markdown to HTML
-  const htmlContent = markdownToHtml(specContent)
+  // Sort user stories by priority before rendering
+  const sortedContent = sortUserStories(specContent)
+  const htmlContent = markdownToHtml(sortedContent)
 
   // Strip HTML comments from the rendered output
   const cleanHtml = htmlContent.replace(/<!--[\s\S]*?-->/g, '')
