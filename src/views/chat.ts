@@ -60,18 +60,26 @@ export async function switchChatToFeature(artifactId: string | null): Promise<vo
     }
     scrollToBottom()
   } else {
-    // Show welcome message for this feature
+    // Determine welcome message based on project/feature state
     const state = getState()
     let welcomeText = WELCOME_MESSAGE
+
     if (artifactId) {
       const artifact = state.artifacts.get(artifactId)
       if (artifact && artifact.type === 'spec') {
-        const name = deriveFeatureName(artifact.content)
-        if (name !== 'Untitled') {
-          welcomeText = `Let's work on **${name}**. Describe what this feature should do, and I'll help shape it into a clear spec.`
+        // Check if this is a fresh template (no real content yet)
+        const isTemplate = !artifact.content
+          || artifact.content.includes('[FEATURE NAME]')
+          || artifact.state === 'empty'
+
+        if (!isTemplate) {
+          const name = deriveFeatureName(artifact.content)
+          welcomeText = `Let's continue working on **${name}**. What would you like to explore or refine?`
         }
+        // If it IS a template, use the product-first WELCOME_MESSAGE
       }
     }
+
     const welcomeBubble = createAssistantBubble()
     const sanitizedHtml = markdownToHtml(welcomeText)
     const wrapper = document.createElement('div')
@@ -287,11 +295,20 @@ async function initChat(): Promise<void> {
   }
 
   if (!state.conversation) {
-    // T020: Show welcome message (no project yet or new conversation)
-    const featureName = getActiveFeatureName()
-    const welcomeText = featureName
-      ? `Let's work on **${featureName}**. Describe what this feature should do, and I'll help shape it into a clear spec.`
-      : WELCOME_MESSAGE
+    // Determine welcome based on whether this is a fresh template or existing work
+    let welcomeText = WELCOME_MESSAGE
+    if (state.currentArtifactId) {
+      const artifact = state.artifacts.get(state.currentArtifactId)
+      if (artifact && artifact.type === 'spec') {
+        const isTemplate = !artifact.content
+          || artifact.content.includes('[FEATURE NAME]')
+          || artifact.state === 'empty'
+        if (!isTemplate) {
+          const name = deriveFeatureName(artifact.content)
+          welcomeText = `Let's continue working on **${name}**. What would you like to explore or refine?`
+        }
+      }
+    }
     const welcomeBubble = createAssistantBubble()
     // Safe: markdownToHtml sanitizes through DOMPurify
     const sanitizedHtml = markdownToHtml(welcomeText)

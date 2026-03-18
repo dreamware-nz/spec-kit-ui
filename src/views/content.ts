@@ -102,8 +102,19 @@ export function renderContentPanel(container: HTMLElement): void {
     rightPane.style.display = 'none'
 
     if (artifact.type === 'spec') {
-      // T029: Render as section cards — right pane shown when a card is selected
-      renderSpecSections(leftPane, rightPane, artifact)
+      // Check if this is a fresh template with no real content
+      const isTemplate = artifact.content.includes('[FEATURE NAME]') || artifact.state === 'empty'
+      if (isTemplate) {
+        leftPane.innerHTML = `
+          <div class="empty-state" style="height: auto; padding: var(--space-8);">
+            <h3 style="font-size: var(--text-lg); color: var(--color-text-secondary);">Spec will appear here</h3>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm);">Start chatting on the left to describe your product. As you talk, the specification will build up here section by section.</p>
+          </div>
+        `
+      } else {
+        // T029: Render as section cards — right pane shown when a card is selected
+        renderSpecSections(leftPane, rightPane, artifact)
+      }
     } else {
       // Non-spec: CodeMirror editor + preview — show both panes
       rightPane.style.display = ''
