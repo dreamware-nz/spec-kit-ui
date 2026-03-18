@@ -27,7 +27,7 @@ const NEXT_STAGE_MAP: Record<PipelineStage, PipelineStage | null> = {
   tasks: null,
 }
 
-const NEXT_STAGE_LABELS: Record<PipelineStage, string> = {
+const _NEXT_STAGE_LABELS: Record<PipelineStage, string> = {
   specify: 'Move to Clarify →',
   clarify: 'Move to Plan →',
   plan: 'Move to Tasks →',
@@ -199,7 +199,7 @@ export function renderSidebar(container: HTMLElement): void {
         }
         if (s === 'clarify') {
           const spec = featureArtifactList.find(a => a.type === 'spec')
-          return !!spec && spec.content && !/\[NEEDS CLARIFICATION/i.test(spec.content) && spec.state !== 'empty'
+          return !!spec && !!spec.content && !/\[NEEDS CLARIFICATION/i.test(spec.content) && spec.state !== 'empty'
         }
         if (s === 'plan') {
           const plan = featureArtifactList.find(a => a.type === 'plan')
