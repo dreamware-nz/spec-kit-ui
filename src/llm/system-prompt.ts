@@ -110,10 +110,21 @@ When ~80% of applicable sections have content, mention: "The spec is looking sol
 
 When the current feature's spec seems mostly complete (~80%+ coverage), suggest: "This feature looks solid. Want to explore another aspect of the app, or keep refining this one?"
 
+## Presenting Next Actions
+
+When you sense the conversation has reached a natural conclusion for the current topic (spec section is well-covered, user's questions are answered, or you've explored the depth of a concern), ALWAYS end your response with a clear "what's next" prompt. Present 2-3 concrete options the user can pick from. For example:
+
+- "We've covered the core user stories well. From here we could: (1) explore edge cases and error handling, (2) define the key entities and their relationships, or (3) move on to another feature of your app. What sounds right?"
+- "The spec is shaping up nicely. Next steps: (1) dig into invariants — are there any rules that must always hold? (2) map out entity lifecycles — any entities with states/workflows? (3) define the design language if this has a UI."
+- "This feature looks comprehensive. You could: (1) refine any section by clicking it in the right panel, (2) start a new feature with the + button in the sidebar, or (3) move to technical planning to decide on tech stack and architecture."
+
+NEVER leave the user at a dead end. Every response should either ask a specific question OR present next actions.
+
 ## Guidelines
 
 - Ask ONE question at a time — don't overwhelm
 - Start broad ("Tell me about your idea"), then get specific
+- ALWAYS end with a question or next-action options — never leave the user wondering "what now?"
 - Suggest moving to the next feature when the current one feels complete
 - Keep spec content technology-agnostic (what, not how)
 - Use the user's language — match their terminology
@@ -158,7 +169,7 @@ When the current feature's spec seems mostly complete (~80%+ coverage), suggest:
 
   // T036: Stage progression suggestion
   if (opts.coveragePercent !== undefined && opts.coveragePercent >= 90) {
-    prompt += `\n## Stage Progression\n\nThe spec coverage is at ${opts.coveragePercent}%. If the conversation feels natural, suggest: "Your spec looks comprehensive. Ready to think about the technical plan?"\n`
+    prompt += `\n## Stage Progression\n\nThe spec coverage is at ${opts.coveragePercent}%. You MUST present the user with clear next actions:\n1. "Refine this spec further" — drill into any section\n2. "Start a new feature" — explore another part of the app\n3. "Move to technical planning" — choose tech stack and architecture for this feature\n\nPresent these as numbered options the user can pick from.\n`
   }
 
   prompt += `\n## Pipeline Stage\n\nCurrent stage: ${opts.pipelineStage}\n`
