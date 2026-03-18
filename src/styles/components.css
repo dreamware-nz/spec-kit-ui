@@ -552,12 +552,34 @@ select:focus-visible,
 .feature-tab:hover { color: var(--color-text); background: var(--color-surface-hover); }
 .feature-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 600; }
 
+/* T037: Discovery Tab Switcher for responsive layout */
+.discovery-tab-switcher {
+  display: none;
+  gap: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.discovery-tab-btn {
+  flex: 1;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid transparent;
+  transition: all var(--transition-fast);
+}
+.discovery-tab-btn:hover { color: var(--color-text); background: var(--color-surface-hover); }
+.discovery-tab-btn.active { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 600; }
+
 /* Responsive: Discovery Layout */
 @media (max-width: 1024px) {
   .discovery-layout { grid-template-columns: 1fr; }
   .discovery-layout .chat-panel { border-right: none; }
   .discovery-layout .spec-panel-wrapper { display: none; }
-  .discovery-layout .spec-panel-wrapper.visible { display: flex; }
+  .discovery-layout .spec-panel-wrapper.visible { display: flex; flex-direction: column; }
   .discovery-tab-switcher { display: flex; }
 }
 @media (min-width: 1025px) {

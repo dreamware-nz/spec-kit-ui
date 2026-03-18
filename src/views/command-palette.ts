@@ -1,9 +1,12 @@
-import { setState, addToast } from '../store/state'
+import { getState, setState, addToast } from '../store/state'
 import { flushAll } from '../store/sync'
 import { setCommandPaletteToggle } from './keyboard'
+import { clearLLMConfig } from '../llm/config'
+import { renderApiKeyModal } from './api-key-modal'
 
 interface Command {
   label: string
+  shortcut?: string
   action: () => void
 }
 
@@ -19,7 +22,6 @@ function getCommands(): Command[] {
     {
       label: 'New Project',
       action: () => {
-        // Navigate to empty state by clearing current project
         setState({ currentProjectId: null, currentArtifactId: null })
         addToast('Ready to create a new project', 'info')
       },
@@ -37,6 +39,46 @@ function getCommands(): Command[] {
         const buttons = document.querySelectorAll('.content-toolbar .btn')
         const importBtn = buttons[1] as HTMLElement
         importBtn?.click()
+      },
+    },
+    // T038: Focus section command
+    {
+      label: 'Focus Section...',
+      shortcut: 'dblclick header',
+      action: () => {
+        // Toggle focus on the first unfocused section card
+        const state = getState()
+        if (state.focusSection) {
+          setState({ focusSection: null })
+          addToast('Section focus cleared', 'info')
+        } else {
+          addToast('Double-click a section header in the spec panel to focus on it', 'info')
+        }
+      },
+    },
+    // T038: Clear conversation command
+    {
+      label: 'Clear Conversation',
+      action: () => {
+        const state = getState()
+        if (state.conversation) {
+          state.conversation.messages = []
+          setState({ conversation: state.conversation })
+          addToast('Conversation cleared', 'info')
+        }
+      },
+    },
+    // T038: Change API key command
+    {
+      label: 'Change API Key',
+      action: () => {
+        clearLLMConfig()
+        const app = document.getElementById('app')
+        if (app) {
+          renderApiKeyModal(app, () => {
+            addToast('API key updated', 'success')
+          })
+        }
       },
     },
     {
@@ -59,6 +101,7 @@ function getCommands(): Command[] {
     },
     {
       label: 'Save All',
+      shortcut: 'Ctrl+S',
       action: () => {
         void flushAll().then(() => addToast('All changes saved', 'success'))
       },
@@ -129,7 +172,18 @@ function open(): void {
       if (i === selectedIndex) item.classList.add('selected')
       item.setAttribute('role', 'option')
       item.setAttribute('aria-selected', String(i === selectedIndex))
-      item.textContent = filtered[i].label
+      const labelSpan = document.createElement('span')
+      labelSpan.style.flex = '1'
+      labelSpan.textContent = filtered[i].label
+      item.appendChild(labelSpan)
+      if (filtered[i].shortcut) {
+        const shortcutSpan = document.createElement('span')
+        shortcutSpan.style.fontSize = 'var(--text-xs)'
+        shortcutSpan.style.color = 'var(--color-text-secondary)'
+        shortcutSpan.style.marginLeft = 'var(--space-2)'
+        shortcutSpan.textContent = filtered[i].shortcut!
+        item.appendChild(shortcutSpan)
+      }
       const idx = i
       item.addEventListener('click', () => {
         close()
