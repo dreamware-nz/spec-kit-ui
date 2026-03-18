@@ -353,22 +353,19 @@ export function renderSidebar(container: HTMLElement): void {
     const state = getState()
     if (!state.currentProjectId) return
 
-    const content = scaffoldArtifact('spec')
-    const artifact = createArtifact(state.currentProjectId, 'spec', 'specify', content)
-    await createArtifactInDB(artifact)
-
-    const artifacts = new Map(state.artifacts)
-    artifacts.set(artifact.id, artifact)
-
+    // Don't create an empty artifact — clear current selection so the chat
+    // shows the welcome prompt. The spec artifact will be created when the
+    // user describes the feature in chat.
+    await flushAll()
     setState({
-      artifacts,
-      currentArtifactId: artifact.id,
+      currentArtifactId: null,
+      conversation: null,
+      focusSection: null,
+      chatStatus: 'idle' as const,
+      chatError: null,
     })
 
-    // Switch chat to the new feature
-    await switchChatToFeature(artifact.id)
-
-    addToast('New feature spec created', 'success')
+    addToast('Describe your new feature in the chat', 'info')
   }
 
   // --- Project item ---
@@ -527,29 +524,21 @@ export function renderSidebar(container: HTMLElement): void {
     const project = createProject(name)
     await createProjectInDB(project)
 
-    // Create default spec artifact with scaffold
-    const content = scaffoldArtifact('spec')
-    const artifact = createArtifact(project.id, 'spec', 'specify', content)
-    await createArtifactInDB(artifact)
+    // Don't create a spec artifact yet — let the chat conversation create it
+    // when the user actually describes their first feature
 
     const state = getState()
-    const artifacts = new Map(state.artifacts)
-    artifacts.set(artifact.id, artifact)
 
     setState({
       projects: [...state.projects, project],
-      artifacts,
       currentProjectId: project.id,
       currentStage: project.currentStage,
-      currentArtifactId: artifact.id,
+      currentArtifactId: null,
       conversation: null,
       focusSection: null,
       chatStatus: 'idle' as const,
       chatError: null,
     })
-
-    // Switch chat to the new project's feature — triggers fresh conversation
-    await switchChatToFeature(artifact.id)
 
     addToast(`Created project "${name}"`, 'success')
   }
