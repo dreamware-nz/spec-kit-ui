@@ -143,17 +143,16 @@ export function renderSidebar(container: HTMLElement): void {
 
       featuresSection.appendChild(featuresHeader)
 
-      // Get all spec artifacts for the current project — exclude empty template stubs
+      // Get all spec artifacts for the current project
+      // Only hide if it's truly a pristine untouched template (state is empty AND no conversation happened)
       const specArtifacts = [...state.artifacts.values()].filter(
         a => a.projectId === state.currentProjectId && a.type === 'spec'
-          && a.state !== 'empty'
-          && a.content
-          && !(/^# Feature Specification: \[FEATURE NAME\]/.test(a.content) && a.content.includes('[Describe this user journey'))
+          && !(a.state === 'empty' && deriveFeatureName(a.content) === 'New Feature')
       )
 
-      // Always show the currently selected artifact even if it's a template (so user can work on it)
+      // Always show the currently selected artifact (so user can work on it)
       const currentArtifact = state.currentArtifactId ? state.artifacts.get(state.currentArtifactId) : null
-      if (currentArtifact && currentArtifact.type === 'spec' && !specArtifacts.find(a => a.id === currentArtifact.id)) {
+      if (currentArtifact && currentArtifact.type === 'spec' && !specArtifacts.find(sa => sa.id === currentArtifact.id)) {
         specArtifacts.unshift(currentArtifact)
       }
 
