@@ -45,6 +45,16 @@ export function markConversationDirty(): void {
   scheduleConversationSave()
 }
 
+/** Immediately save the conversation to IndexedDB (no debounce). */
+export async function flushConversationNow(): Promise<void> {
+  if (conversationSaveTimer) {
+    clearTimeout(conversationSaveTimer)
+    conversationSaveTimer = null
+  }
+  conversationDirty = true
+  await flushConversation()
+}
+
 function scheduleConversationSave(): void {
   if (conversationSaveTimer) return
   conversationSaveTimer = setTimeout(async () => {

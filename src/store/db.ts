@@ -26,6 +26,7 @@ interface SpecWorkbenchDB {
     value: Conversation
     indexes: {
       'by-project': string
+      'by-artifact': string
     }
   }
 }
@@ -34,8 +35,8 @@ let dbInstance: IDBPDatabase<SpecWorkbenchDB> | null = null
 
 export async function getDB(): Promise<IDBPDatabase<SpecWorkbenchDB>> {
   if (dbInstance) return dbInstance
-  dbInstance = await openDB<SpecWorkbenchDB>('spec-workbench', 2, {
-    upgrade(db, oldVersion) {
+  dbInstance = await openDB<SpecWorkbenchDB>('spec-workbench', 3, {
+    upgrade(db, oldVersion, _newVersion, transaction) {
       if (oldVersion < 1) {
         const projectStore = db.createObjectStore('projects', { keyPath: 'id' })
         projectStore.createIndex('by-updated', 'updatedAt')
@@ -50,6 +51,14 @@ export async function getDB(): Promise<IDBPDatabase<SpecWorkbenchDB>> {
       if (oldVersion < 2) {
         const conversationStore = db.createObjectStore('conversations', { keyPath: 'id' })
         conversationStore.createIndex('by-project', 'projectId')
+      }
+
+      if (oldVersion < 3) {
+        // Add by-artifact index to conversations store
+        const store = transaction.objectStore('conversations')
+        if (!store.indexNames.contains('by-artifact')) {
+          store.createIndex('by-artifact', 'artifactId')
+        }
       }
     },
   })
@@ -135,6 +144,18 @@ export async function getConversationByProject(projectId: string): Promise<Conve
   // Return the most recent conversation for this project
   if (conversations.length === 0) return undefined
   return conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+}
+
+export async function getConversationByArtifact(artifactId: string): Promise<Conversation | undefined> {
+  const db = await getDB()
+  const conversations = await db.getAllFromIndex('conversations', 'by-artifact', artifactId)
+  if (conversations.length === 0) return undefined
+  return conversations.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+}
+
+export async function getConversationsByProject(projectId: string): Promise<Conversation[]> {
+  const db = await getDB()
+  return db.getAllFromIndex('conversations', 'by-project', projectId)
 }
 
 export async function saveConversation(conversation: Conversation): Promise<Conversation> {

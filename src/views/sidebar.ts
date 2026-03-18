@@ -5,6 +5,9 @@ import { STAGE_ARTIFACT_MAP, createArtifact } from '../models/artifact'
 import { createArtifactInDB, createProjectInDB, deleteProject as deleteProjectFromDB, updateProject as updateProjectInDB, getArtifactsByProject } from '../store/db'
 import { scaffoldArtifact } from '../parsers/template'
 import { createProject } from '../models/project'
+import { deriveFeatureName } from './feature-tabs'
+import { switchChatToFeature } from './chat'
+import { parseMarkdownSections } from '../parsers/spec-parser'
 import type { Project, PipelineStage } from '../models/project'
 import type { ArtifactType, Artifact } from '../models/artifact'
 
@@ -23,9 +26,9 @@ const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
 }
 
 const STATE_INDICATORS: Record<string, string> = {
-  new: '○',
-  'in-progress': '◐',
-  specified: '●',
+  new: '\u25CB',
+  'in-progress': '\u25D0',
+  specified: '\u25CF',
 }
 
 export function renderSidebar(container: HTMLElement): void {
@@ -58,7 +61,7 @@ export function renderSidebar(container: HTMLElement): void {
 
     container.appendChild(titleBlock)
 
-    // --- T047: Project list section ---
+    // --- Project list section ---
     const projectSection = document.createElement('div')
     projectSection.className = 'sidebar-project-list'
     projectSection.style.marginBottom = 'var(--space-3)'
@@ -80,7 +83,7 @@ export function renderSidebar(container: HTMLElement): void {
       projectSection.appendChild(item)
     }
 
-    // T048: New Project button / inline input
+    // New Project button / inline input
     const newProjectContainer = document.createElement('div')
     newProjectContainer.style.marginTop = 'var(--space-1)'
     renderNewProjectButton(newProjectContainer)
@@ -88,9 +91,61 @@ export function renderSidebar(container: HTMLElement): void {
 
     container.appendChild(projectSection)
 
-    // Pipeline stages nav (only if a project is selected)
+    // --- Features list (only if a project is selected) ---
     const currentProject = state.projects.find(p => p.id === state.currentProjectId)
     if (currentProject) {
+      const featuresSection = document.createElement('div')
+      featuresSection.className = 'sidebar-features-list'
+      featuresSection.style.marginBottom = 'var(--space-3)'
+      featuresSection.style.borderBottom = '1px solid var(--color-border, #333)'
+      featuresSection.style.paddingBottom = 'var(--space-3)'
+
+      const featuresHeader = document.createElement('div')
+      featuresHeader.style.display = 'flex'
+      featuresHeader.style.alignItems = 'center'
+      featuresHeader.style.justifyContent = 'space-between'
+      featuresHeader.style.marginBottom = 'var(--space-1)'
+
+      const featuresLabel = document.createElement('div')
+      featuresLabel.style.fontSize = 'var(--text-xs)'
+      featuresLabel.style.color = 'var(--color-text-secondary)'
+      featuresLabel.style.textTransform = 'uppercase'
+      featuresLabel.style.letterSpacing = '0.05em'
+      featuresLabel.textContent = 'Features'
+      featuresHeader.appendChild(featuresLabel)
+
+      // "+" button to add new feature
+      const addFeatureBtn = document.createElement('button')
+      addFeatureBtn.style.border = 'none'
+      addFeatureBtn.style.background = 'none'
+      addFeatureBtn.style.color = 'var(--color-text-secondary)'
+      addFeatureBtn.style.cursor = 'pointer'
+      addFeatureBtn.style.fontSize = 'var(--text-sm)'
+      addFeatureBtn.style.padding = '0 var(--space-1)'
+      addFeatureBtn.textContent = '+'
+      addFeatureBtn.title = 'Add new feature'
+      addFeatureBtn.setAttribute('aria-label', 'Add new feature spec')
+      addFeatureBtn.addEventListener('click', () => {
+        void createNewFeature()
+      })
+      featuresHeader.appendChild(addFeatureBtn)
+
+      featuresSection.appendChild(featuresHeader)
+
+      // Get all spec artifacts for the current project
+      const specArtifacts = [...state.artifacts.values()].filter(
+        a => a.projectId === state.currentProjectId && a.type === 'spec'
+      )
+
+      // Render each feature item
+      for (const artifact of specArtifacts) {
+        const featureItem = createFeatureItem(artifact, state.currentArtifactId)
+        featuresSection.appendChild(featureItem)
+      }
+
+      container.appendChild(featuresSection)
+
+      // --- Pipeline stages nav ---
       const nav = document.createElement('nav')
       nav.className = 'sidebar-nav'
       nav.setAttribute('role', 'list')
@@ -110,7 +165,83 @@ export function renderSidebar(container: HTMLElement): void {
     container.addEventListener('keydown', handleKeyboard)
   }
 
-  // --- T047: Project item ---
+  // --- Feature item ---
+  function createFeatureItem(artifact: Artifact, currentArtifactId: string | null): HTMLElement {
+    const item = document.createElement('div')
+    item.className = 'sidebar-feature-item'
+    item.style.display = 'flex'
+    item.style.alignItems = 'center'
+    item.style.padding = 'var(--space-1) var(--space-2)'
+    item.style.cursor = 'pointer'
+    item.style.borderRadius = 'var(--radius-sm, 4px)'
+    item.style.fontSize = 'var(--text-sm)'
+    item.style.gap = 'var(--space-2)'
+
+    const isActive = artifact.id === currentArtifactId
+    if (isActive) {
+      item.style.background = 'var(--color-surface-hover, rgba(255,255,255,0.1))'
+      item.style.fontWeight = '600'
+    }
+
+    // Feature name
+    const featureName = deriveFeatureName(artifact.content)
+    const nameSpan = document.createElement('span')
+    nameSpan.style.flex = '1'
+    nameSpan.style.overflow = 'hidden'
+    nameSpan.style.textOverflow = 'ellipsis'
+    nameSpan.style.whiteSpace = 'nowrap'
+    nameSpan.textContent = featureName
+    item.appendChild(nameSpan)
+
+    // Coverage percentage badge
+    const sections = parseMarkdownSections(artifact.content)
+    const total = sections.length
+    const filled = sections.filter(s => s.content.trim().length > 20).length
+    const percent = total > 0 ? Math.round((filled / total) * 100) : 0
+
+    const badge = document.createElement('span')
+    badge.style.fontSize = 'var(--text-xs)'
+    badge.style.color = 'var(--color-text-secondary)'
+    badge.style.flexShrink = '0'
+    badge.textContent = `${percent}%`
+    item.appendChild(badge)
+
+    // Click to switch feature
+    item.addEventListener('click', async () => {
+      if (artifact.id === currentArtifactId) return
+      await flushAll()
+      setState({ currentArtifactId: artifact.id })
+      // Load conversation for this feature
+      await switchChatToFeature(artifact.id)
+    })
+
+    return item
+  }
+
+  // --- Create new feature ---
+  async function createNewFeature(): Promise<void> {
+    const state = getState()
+    if (!state.currentProjectId) return
+
+    const content = scaffoldArtifact('spec')
+    const artifact = createArtifact(state.currentProjectId, 'spec', 'specify', content)
+    await createArtifactInDB(artifact)
+
+    const artifacts = new Map(state.artifacts)
+    artifacts.set(artifact.id, artifact)
+
+    setState({
+      artifacts,
+      currentArtifactId: artifact.id,
+    })
+
+    // Switch chat to the new feature
+    await switchChatToFeature(artifact.id)
+
+    addToast('New feature spec created', 'success')
+  }
+
+  // --- Project item ---
   function createProjectItem(project: Project, currentProjectId: string | null): HTMLElement {
     const item = document.createElement('div')
     item.className = 'sidebar-project-item'
@@ -133,10 +264,10 @@ export function renderSidebar(container: HTMLElement): void {
     indicator.style.marginRight = 'var(--space-2)'
     indicator.style.fontSize = 'var(--text-xs)'
     indicator.style.flexShrink = '0'
-    indicator.textContent = STATE_INDICATORS[project.state] || '○'
+    indicator.textContent = STATE_INDICATORS[project.state] || '\u25CB'
     item.appendChild(indicator)
 
-    // Project name (T051: double-click to rename)
+    // Project name (double-click to rename)
     const nameSpan = document.createElement('span')
     nameSpan.className = 'sidebar-project-name'
     nameSpan.style.flex = '1'
@@ -146,7 +277,7 @@ export function renderSidebar(container: HTMLElement): void {
     nameSpan.textContent = project.name
     item.appendChild(nameSpan)
 
-    // T050: Delete button (visible on hover)
+    // Delete button (visible on hover)
     const deleteBtn = document.createElement('button')
     deleteBtn.className = 'sidebar-project-delete'
     deleteBtn.textContent = '\u00d7'
@@ -167,20 +298,20 @@ export function renderSidebar(container: HTMLElement): void {
     item.addEventListener('mouseenter', () => { deleteBtn.style.opacity = '1' })
     item.addEventListener('mouseleave', () => { deleteBtn.style.opacity = '0' })
 
-    // T049: Switch project on click
+    // Switch project on click
     item.addEventListener('click', async (e) => {
       if ((e.target as HTMLElement).closest('.sidebar-project-delete')) return
       if (project.id === currentProjectId) return
       await switchToProject(project.id)
     })
 
-    // T051: Double-click to rename
+    // Double-click to rename
     nameSpan.addEventListener('dblclick', (e) => {
       e.stopPropagation()
       enterRenameMode(item, nameSpan, project)
     })
 
-    // T050: Delete on click
+    // Delete on click
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation()
       await handleDeleteProject(project)
@@ -189,7 +320,7 @@ export function renderSidebar(container: HTMLElement): void {
     return item
   }
 
-  // --- T048: New Project button ---
+  // --- New Project button ---
   function renderNewProjectButton(container: HTMLElement): void {
     while (container.firstChild) container.removeChild(container.firstChild)
 
@@ -213,7 +344,7 @@ export function renderSidebar(container: HTMLElement): void {
     container.appendChild(btn)
   }
 
-  // --- T048: Inline input for new project name ---
+  // --- Inline input for new project name ---
   function renderNewProjectInput(container: HTMLElement): void {
     while (container.firstChild) container.removeChild(container.firstChild)
 
@@ -261,7 +392,7 @@ export function renderSidebar(container: HTMLElement): void {
     input.focus()
   }
 
-  // --- T048: Create project handler ---
+  // --- Create project handler ---
   async function handleCreateProject(name: string): Promise<void> {
     const project = createProject(name)
     await createProjectInDB(project)
@@ -286,7 +417,7 @@ export function renderSidebar(container: HTMLElement): void {
     addToast(`Created project "${name}"`, 'success')
   }
 
-  // --- T049: Switch project handler ---
+  // --- Switch project handler ---
   async function switchToProject(projectId: string): Promise<void> {
     await flushAll()
 
@@ -300,17 +431,22 @@ export function renderSidebar(container: HTMLElement): void {
     }
 
     const project = state.projects.find(p => p.id === projectId)
-    const firstArtifact = projectArtifacts[0] || null
+    const firstSpecArtifact = projectArtifacts.find(a => a.type === 'spec') || projectArtifacts[0] || null
 
     setState({
       artifacts,
       currentProjectId: projectId,
       currentStage: project?.currentStage || 'specify',
-      currentArtifactId: firstArtifact?.id || null,
+      currentArtifactId: firstSpecArtifact?.id || null,
     })
+
+    // Load conversation for the selected artifact
+    if (firstSpecArtifact) {
+      await switchChatToFeature(firstSpecArtifact.id)
+    }
   }
 
-  // --- T050: Delete project handler ---
+  // --- Delete project handler ---
   async function handleDeleteProject(project: Project): Promise<void> {
     const confirmed = window.confirm(`Delete "${project.name}"?`)
     if (!confirmed) return
@@ -358,7 +494,7 @@ export function renderSidebar(container: HTMLElement): void {
     addToast(`Deleted project "${project.name}"`, 'info')
   }
 
-  // --- T051: Rename project (inline edit) ---
+  // --- Rename project (inline edit) ---
   function enterRenameMode(_item: HTMLElement, nameSpan: HTMLElement, project: Project): void {
     const input = document.createElement('input')
     input.type = 'text'
@@ -476,7 +612,7 @@ export function renderSidebar(container: HTMLElement): void {
 
     wrapper.appendChild(btn)
 
-    // Artifact types under stage (T035)
+    // Artifact types under stage
     if (stage === activeStage) {
       const artifactTypes = STAGE_ARTIFACT_MAP[stage]
       const typeList = document.createElement('div')
@@ -543,7 +679,7 @@ export function renderSidebar(container: HTMLElement): void {
       if (artifact) {
         setState({ currentArtifactId: artifact.id })
       } else {
-        // T038: Create artifact from template
+        // Create artifact from template
         await createArtifactFromTemplate(type, stage)
       }
     })

@@ -1,7 +1,6 @@
 import { renderChatPanel } from './chat'
 import { renderContentPanel } from './content'
 import { renderCoverageBar } from './coverage-bar'
-import { renderFeatureTabs } from './feature-tabs'
 
 export function renderDiscoveryLayout(container: HTMLElement): void {
   // Clear container safely
@@ -57,8 +56,6 @@ export function renderDiscoveryLayout(container: HTMLElement): void {
   renderChatPanel(chatPanel)
   renderCoverageBar(chatPanel)
 
-  // T023: Feature tabs above spec panel
-  renderFeatureTabs(specPanel)
-
+  // Feature tabs removed — features are now in the sidebar
   renderContentPanel(specPanel)
 }

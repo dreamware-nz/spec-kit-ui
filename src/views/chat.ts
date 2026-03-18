@@ -1,5 +1,5 @@
 import { getState, setState, subscribe } from '../store/state'
-import { markDirty, markConversationDirty } from '../store/sync'
+import { markDirty, markConversationDirty, flushConversationNow } from '../store/sync'
 import { sendMessage, abortStream } from '../llm/client'
 import { buildSystemPrompt } from '../llm/system-prompt'
 import { createResponseParser } from '../llm/response-parser'
@@ -11,7 +11,7 @@ import { markdownToHtml } from '../parsers/markdown-io'
 import { scaffoldSpecFromIdea } from '../parsers/template'
 import { createProject } from '../models/project'
 import { createArtifact } from '../models/artifact'
-import { createProjectInDB, createArtifactInDB, getConversationByProject, saveConversation } from '../store/db'
+import { createProjectInDB, createArtifactInDB, getConversationByArtifact, saveConversation } from '../store/db'
 import { renderApiKeyModal } from './api-key-modal'
 import { deriveFeatureName, gatherAllGlossaryTerms, findCrossFeatureEntities } from './feature-tabs'
 
@@ -30,6 +30,56 @@ let userAtBottom = true
 let scrollBottomBtn: HTMLElement | null = null
 /** T040: Aria-live region for screen reader announcements */
 let ariaLiveRegion: HTMLElement | null = null
+
+/**
+ * Switch chat to a different feature's conversation.
+ * Saves current conversation, loads conversation for the given artifact.
+ */
+export async function switchChatToFeature(artifactId: string | null): Promise<void> {
+  // Save current conversation immediately
+  await flushConversationNow()
+
+  // Load conversation for the target artifact
+  let conversation = null
+  if (artifactId) {
+    conversation = await getConversationByArtifact(artifactId) ?? null
+  }
+
+  setState({ conversation })
+
+  // Re-render the chat messages
+  if (messageList) {
+    while (messageList.firstChild) {
+      messageList.removeChild(messageList.firstChild)
+    }
+  }
+
+  if (conversation && conversation.messages.length > 0) {
+    for (const msg of conversation.messages) {
+      renderMessageBubble(msg)
+    }
+    scrollToBottom()
+  } else {
+    // Show welcome message for this feature
+    const state = getState()
+    let welcomeText = WELCOME_MESSAGE
+    if (artifactId) {
+      const artifact = state.artifacts.get(artifactId)
+      if (artifact && artifact.type === 'spec') {
+        const name = deriveFeatureName(artifact.content)
+        if (name !== 'Untitled') {
+          welcomeText = `Let's work on **${name}**. Describe what this feature should do, and I'll help shape it into a clear spec.`
+        }
+      }
+    }
+    const welcomeBubble = createAssistantBubble()
+    const sanitizedHtml = markdownToHtml(welcomeText)
+    const wrapper = document.createElement('div')
+    wrapper.insertAdjacentHTML('afterbegin', sanitizedHtml)
+    welcomeBubble.appendChild(wrapper)
+    messageList?.appendChild(welcomeBubble)
+  }
+}
 
 export function renderChatPanel(container: HTMLElement): void {
   // Clear container safely
@@ -205,12 +255,20 @@ export function renderChatPanel(container: HTMLElement): void {
 async function initChat(): Promise<void> {
   const state = getState()
 
-  if (state.currentProjectId && !state.conversation) {
-    // T022: Try to restore conversation from DB
-    const existing = await getConversationByProject(state.currentProjectId)
+  // If conversation is already in state (restored by main.ts), render its messages
+  if (state.conversation && state.conversation.messages.length > 0) {
+    for (const msg of state.conversation.messages) {
+      renderMessageBubble(msg)
+    }
+    scrollToBottom()
+    return
+  }
+
+  // Try to restore conversation from DB for the current artifact
+  if (state.currentArtifactId && !state.conversation) {
+    const existing = await getConversationByArtifact(state.currentArtifactId)
     if (existing) {
       setState({ conversation: existing })
-      // Render existing messages
       for (const msg of existing.messages) {
         renderMessageBubble(msg)
       }
@@ -221,14 +279,28 @@ async function initChat(): Promise<void> {
 
   if (!state.conversation) {
     // T020: Show welcome message (no project yet or new conversation)
+    const featureName = getActiveFeatureName()
+    const welcomeText = featureName
+      ? `Let's work on **${featureName}**. Describe what this feature should do, and I'll help shape it into a clear spec.`
+      : WELCOME_MESSAGE
     const welcomeBubble = createAssistantBubble()
     // Safe: markdownToHtml sanitizes through DOMPurify
-    const sanitizedHtml = markdownToHtml(WELCOME_MESSAGE)
+    const sanitizedHtml = markdownToHtml(welcomeText)
     const wrapper = document.createElement('div')
     wrapper.insertAdjacentHTML('afterbegin', sanitizedHtml)
     welcomeBubble.appendChild(wrapper)
     messageList?.appendChild(welcomeBubble)
   }
+}
+
+/** Get the name of the currently active feature/artifact */
+function getActiveFeatureName(): string | null {
+  const state = getState()
+  if (!state.currentArtifactId) return null
+  const artifact = state.artifacts.get(state.currentArtifactId)
+  if (!artifact || artifact.type !== 'spec') return null
+  const name = deriveFeatureName(artifact.content)
+  return name !== 'Untitled' ? name : null
 }
 
 function handleSend(): void {
@@ -278,8 +350,8 @@ async function createProjectFromIdea(idea: string): Promise<void> {
   const artifact = createArtifact(project.id, 'spec', 'specify', specContent)
   await createArtifactInDB(artifact)
 
-  // Create conversation
-  const conversation = createConversation(project.id)
+  // Create conversation bound to the feature artifact
+  const conversation = createConversation(project.id, artifact.id)
   await saveConversation(conversation)
 
   // Update state
@@ -303,10 +375,10 @@ async function createProjectFromIdea(idea: string): Promise<void> {
 async function sendUserMessage(text: string): Promise<void> {
   const state = getState()
 
-  // Ensure conversation exists
+  // Ensure conversation exists, bound to the current artifact
   let conversation = state.conversation
   if (!conversation && state.currentProjectId) {
-    conversation = createConversation(state.currentProjectId)
+    conversation = createConversation(state.currentProjectId, state.currentArtifactId)
     setState({ conversation })
   }
   if (!conversation) return
@@ -403,14 +475,13 @@ async function sendUserMessage(text: string): Promise<void> {
       const assistantMsg = createMessage('assistant', streamingText, collectedUpdates)
       conversation!.messages.push(assistantMsg)
 
-      // Save conversation
-      markConversationDirty()
-
       // T029: Check if safety-net should fire
       if (coveragePercent >= 80 && !conversation!.safetyNetFired) {
         conversation!.safetyNetFired = true
-        markConversationDirty()
       }
+
+      // Immediately flush conversation to IndexedDB (don't rely on debounce)
+      void flushConversationNow()
 
       // Reset status
       setState({ chatStatus: 'idle', chatError: null })

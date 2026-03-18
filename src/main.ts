@@ -6,7 +6,7 @@ import './styles/responsive.css'
 
 import { getDB, getAllProjects, getArtifactsByProject } from './store/db'
 import { getState, setState, subscribe, addToast } from './store/state'
-import { startAutoSave } from './store/sync'
+import { startAutoSave, flushAll } from './store/sync'
 import { renderShell } from './views/shell'
 import { renderEmptyState } from './views/empty-state'
 import { renderDiscoveryLayout } from './views/discovery-layout'
@@ -16,7 +16,7 @@ import { initKeyboardNav } from './views/keyboard'
 import { initCommandPalette } from './views/command-palette'
 import { hasApiKey } from './llm/config'
 import { renderApiKeyModal } from './views/api-key-modal'
-import { getConversationByProject } from './store/db'
+import { getConversationByArtifact } from './store/db'
 import type { Artifact } from './models/artifact'
 
 /** T055: Show skeleton loading placeholders while DB initializes */
@@ -106,10 +106,10 @@ async function init(): Promise<void> {
       }
     }
 
-    // T022: Restore conversation if project exists
+    // T022: Restore conversation for the current artifact
     const currentState = getState()
-    if (currentState.currentProjectId) {
-      const existingConversation = await getConversationByProject(currentState.currentProjectId)
+    if (currentState.currentArtifactId) {
+      const existingConversation = await getConversationByArtifact(currentState.currentArtifactId)
       if (existingConversation) {
         setState({ conversation: existingConversation })
       }
@@ -159,6 +159,11 @@ async function init(): Promise<void> {
 
     // Start auto-save
     startAutoSave()
+
+    // Flush all dirty data before page unloads
+    window.addEventListener('beforeunload', () => {
+      void flushAll()
+    })
 
     // T052: Initialize keyboard navigation
     initKeyboardNav()

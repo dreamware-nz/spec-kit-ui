@@ -15,6 +15,8 @@ export interface Message {
 export interface Conversation {
   id: string
   projectId: string
+  /** The artifact (feature spec) this conversation is bound to. Null = project overview. */
+  artifactId: string | null
   messages: Message[]
   currentFocusSection: string | null
   pipelineStage: string
@@ -38,10 +40,11 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
   maxTokens: 4096,
 }
 
-export function createConversation(projectId: string): Conversation {
+export function createConversation(projectId: string, artifactId: string | null = null): Conversation {
   return {
     id: crypto.randomUUID(),
     projectId,
+    artifactId,
     messages: [],
     currentFocusSection: null,
     pipelineStage: 'specify',

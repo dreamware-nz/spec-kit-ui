@@ -1,81 +1,11 @@
-import { getState, setState, subscribe, addToast } from '../store/state'
-import { createArtifact } from '../models/artifact'
-import { createArtifactInDB } from '../store/db'
-import { scaffoldArtifact } from '../parsers/template'
-import { markConversationDirty } from '../store/sync'
 import { parseMarkdownSections } from '../parsers/spec-parser'
 import type { Artifact } from '../models/artifact'
 
 /**
- * T023: Feature tabs UI — tab bar above spec panel for switching between feature specs.
- * Each tab shows feature name derived from spec title. "+" button to create new feature tab.
+ * Feature utility functions.
+ * The tab UI has been removed — features are now listed in the sidebar.
+ * These functions remain as they are used by chat.ts and content.ts.
  */
-export function renderFeatureTabs(container: HTMLElement): void {
-  const tabBar = document.createElement('div')
-  tabBar.className = 'feature-tabs'
-  tabBar.setAttribute('role', 'tablist')
-  tabBar.setAttribute('aria-label', 'Feature specs')
-  container.appendChild(tabBar)
-
-  function render(): void {
-    while (tabBar.firstChild) {
-      tabBar.removeChild(tabBar.firstChild)
-    }
-
-    const state = getState()
-    if (!state.currentProjectId) return
-
-    // Get all spec artifacts for the current project
-    const specArtifacts = [...state.artifacts.values()].filter(
-      a => a.projectId === state.currentProjectId && a.type === 'spec'
-    )
-
-    for (const artifact of specArtifacts) {
-      const tab = document.createElement('button')
-      tab.className = 'feature-tab'
-      tab.setAttribute('role', 'tab')
-      tab.setAttribute('aria-selected', String(artifact.id === state.currentArtifactId))
-
-      if (artifact.id === state.currentArtifactId) {
-        tab.classList.add('active')
-      }
-
-      // Derive feature name from spec content title
-      const featureName = deriveFeatureName(artifact.content)
-
-      // Compute coverage percentage
-      const sections = parseMarkdownSections(artifact.content)
-      const total = sections.length
-      const filled = sections.filter(s => s.content.trim().length > 20).length
-      const percent = total > 0 ? Math.round((filled / total) * 100) : 0
-
-      tab.textContent = `${featureName} (${percent}%)`
-      tab.title = `Switch to ${featureName}`
-
-      tab.addEventListener('click', () => {
-        switchToFeature(artifact.id)
-      })
-
-      tabBar.appendChild(tab)
-    }
-
-    // "+" button to create new feature tab
-    const addBtn = document.createElement('button')
-    addBtn.className = 'feature-tab'
-    addBtn.textContent = '+'
-    addBtn.title = 'Add new feature'
-    addBtn.setAttribute('aria-label', 'Add new feature spec')
-
-    addBtn.addEventListener('click', () => {
-      void createNewFeature()
-    })
-
-    tabBar.appendChild(addBtn)
-  }
-
-  subscribe(render)
-  render()
-}
 
 /** Derive feature name from spec content (first heading or fallback) */
 export function deriveFeatureName(content: string): string {
@@ -87,55 +17,6 @@ export function deriveFeatureName(content: string): string {
   }
   const firstLine = content.split('\n')[0]?.replace(/^#+\s*/, '').trim()
   return firstLine?.slice(0, 40) || 'Untitled'
-}
-
-/**
- * T024: When switching features, update conversation context.
- * Adds visual separator in chat.
- */
-function switchToFeature(artifactId: string): void {
-  const state = getState()
-  if (state.currentArtifactId === artifactId) return
-
-  const artifact = state.artifacts.get(artifactId)
-  if (!artifact) return
-
-  const featureName = deriveFeatureName(artifact.content)
-
-  setState({ currentArtifactId: artifactId })
-
-  // Add a visual separator to the conversation
-  if (state.conversation) {
-    const separator = {
-      id: crypto.randomUUID(),
-      role: 'assistant' as const,
-      content: `--- Switching to: ${featureName} ---`,
-      specUpdates: [],
-      timestamp: new Date().toISOString(),
-    }
-    state.conversation.messages.push(separator)
-    markConversationDirty()
-  }
-}
-
-/** Create a new feature spec artifact */
-async function createNewFeature(): Promise<void> {
-  const state = getState()
-  if (!state.currentProjectId) return
-
-  const content = scaffoldArtifact('spec')
-  const artifact = createArtifact(state.currentProjectId, 'spec', 'specify', content)
-  await createArtifactInDB(artifact)
-
-  const artifacts = new Map(state.artifacts)
-  artifacts.set(artifact.id, artifact)
-
-  setState({
-    artifacts,
-    currentArtifactId: artifact.id,
-  })
-
-  addToast('New feature spec created', 'success')
 }
 
 /**
