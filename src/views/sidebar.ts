@@ -1,10 +1,11 @@
-import { getState, setState, subscribe, addToast } from '../store/state'
+import { getState, setState, addToast, subscribe } from '../store/state'
 import { flushAll } from '../store/sync'
 import { PIPELINE_STAGES, getStageCompletion } from '../models/pipeline'
 import { STAGE_ARTIFACT_MAP, createArtifact } from '../models/artifact'
-import { createArtifactInDB } from '../store/db'
+import { createArtifactInDB, createProjectInDB, deleteProject as deleteProjectFromDB, updateProject as updateProjectInDB, getArtifactsByProject } from '../store/db'
 import { scaffoldArtifact } from '../parsers/template'
-import type { PipelineStage } from '../models/project'
+import { createProject } from '../models/project'
+import type { Project, PipelineStage } from '../models/project'
 import type { ArtifactType, Artifact } from '../models/artifact'
 
 const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
@@ -19,6 +20,12 @@ const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
   deployment: 'Deployment',
   tasks: 'Tasks',
   quickstart: 'Quickstart',
+}
+
+const STATE_INDICATORS: Record<string, string> = {
+  new: '○',
+  'in-progress': '◐',
+  specified: '●',
 }
 
 export function renderSidebar(container: HTMLElement): void {
@@ -37,35 +44,355 @@ export function renderSidebar(container: HTMLElement): void {
     title.textContent = 'Spec Workbench'
     container.appendChild(title)
 
-    // Current project name
-    const currentProject = state.projects.find(p => p.id === state.currentProjectId)
-    const projectName = document.createElement('div')
-    projectName.className = 'sidebar-project-name'
-    projectName.style.fontSize = 'var(--text-sm)'
-    projectName.style.color = 'var(--color-text-secondary)'
-    projectName.style.marginBottom = 'var(--space-2)'
-    projectName.textContent = currentProject ? currentProject.name : 'No project selected'
-    container.appendChild(projectName)
+    // --- T047: Project list section ---
+    const projectSection = document.createElement('div')
+    projectSection.className = 'sidebar-project-list'
+    projectSection.style.marginBottom = 'var(--space-3)'
+    projectSection.style.borderBottom = '1px solid var(--color-border, #333)'
+    projectSection.style.paddingBottom = 'var(--space-3)'
 
-    // Pipeline stages nav
-    const nav = document.createElement('nav')
-    nav.className = 'sidebar-nav'
-    nav.setAttribute('role', 'list')
-    nav.setAttribute('aria-label', 'Pipeline stages')
+    const projectHeader = document.createElement('div')
+    projectHeader.style.fontSize = 'var(--text-xs)'
+    projectHeader.style.color = 'var(--color-text-secondary)'
+    projectHeader.style.textTransform = 'uppercase'
+    projectHeader.style.letterSpacing = '0.05em'
+    projectHeader.style.marginBottom = 'var(--space-1)'
+    projectHeader.textContent = 'Projects'
+    projectSection.appendChild(projectHeader)
 
-    const projectArtifacts = currentProject
-      ? [...state.artifacts.values()].filter(a => a.projectId === currentProject.id)
-      : []
-
-    for (const stage of PIPELINE_STAGES) {
-      const stageItem = createStageItem(stage, state.currentStage, projectArtifacts)
-      nav.appendChild(stageItem)
+    // Project items
+    for (const project of state.projects) {
+      const item = createProjectItem(project, state.currentProjectId)
+      projectSection.appendChild(item)
     }
 
-    container.appendChild(nav)
+    // T048: New Project button / inline input
+    const newProjectContainer = document.createElement('div')
+    newProjectContainer.style.marginTop = 'var(--space-1)'
+    renderNewProjectButton(newProjectContainer)
+    projectSection.appendChild(newProjectContainer)
+
+    container.appendChild(projectSection)
+
+    // Pipeline stages nav (only if a project is selected)
+    const currentProject = state.projects.find(p => p.id === state.currentProjectId)
+    if (currentProject) {
+      const nav = document.createElement('nav')
+      nav.className = 'sidebar-nav'
+      nav.setAttribute('role', 'list')
+      nav.setAttribute('aria-label', 'Pipeline stages')
+
+      const projectArtifacts = [...state.artifacts.values()].filter(a => a.projectId === currentProject.id)
+
+      for (const stage of PIPELINE_STAGES) {
+        const stageItem = createStageItem(stage, state.currentStage, projectArtifacts)
+        nav.appendChild(stageItem)
+      }
+
+      container.appendChild(nav)
+    }
 
     // Keyboard navigation
     container.addEventListener('keydown', handleKeyboard)
+  }
+
+  // --- T047: Project item ---
+  function createProjectItem(project: Project, currentProjectId: string | null): HTMLElement {
+    const item = document.createElement('div')
+    item.className = 'sidebar-project-item'
+    item.style.display = 'flex'
+    item.style.alignItems = 'center'
+    item.style.padding = 'var(--space-1) var(--space-2)'
+    item.style.cursor = 'pointer'
+    item.style.borderRadius = 'var(--radius-sm, 4px)'
+    item.style.fontSize = 'var(--text-sm)'
+    item.style.position = 'relative'
+
+    const isActive = project.id === currentProjectId
+    if (isActive) {
+      item.style.background = 'var(--color-surface-hover, rgba(255,255,255,0.1))'
+      item.style.fontWeight = '600'
+    }
+
+    // State indicator
+    const indicator = document.createElement('span')
+    indicator.style.marginRight = 'var(--space-2)'
+    indicator.style.fontSize = 'var(--text-xs)'
+    indicator.style.flexShrink = '0'
+    indicator.textContent = STATE_INDICATORS[project.state] || '○'
+    item.appendChild(indicator)
+
+    // Project name (T051: double-click to rename)
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'sidebar-project-name'
+    nameSpan.style.flex = '1'
+    nameSpan.style.overflow = 'hidden'
+    nameSpan.style.textOverflow = 'ellipsis'
+    nameSpan.style.whiteSpace = 'nowrap'
+    nameSpan.textContent = project.name
+    item.appendChild(nameSpan)
+
+    // T050: Delete button (visible on hover)
+    const deleteBtn = document.createElement('button')
+    deleteBtn.className = 'sidebar-project-delete'
+    deleteBtn.textContent = '\u00d7'
+    deleteBtn.title = `Delete ${project.name}`
+    deleteBtn.style.border = 'none'
+    deleteBtn.style.background = 'none'
+    deleteBtn.style.color = 'var(--color-text-secondary)'
+    deleteBtn.style.cursor = 'pointer'
+    deleteBtn.style.fontSize = 'var(--text-sm)'
+    deleteBtn.style.padding = '0 var(--space-1)'
+    deleteBtn.style.opacity = '0'
+    deleteBtn.style.transition = 'opacity 0.15s'
+    deleteBtn.style.flexShrink = '0'
+    item.appendChild(deleteBtn)
+
+    // Show delete button on hover
+    item.addEventListener('mouseenter', () => { deleteBtn.style.opacity = '1' })
+    item.addEventListener('mouseleave', () => { deleteBtn.style.opacity = '0' })
+
+    // T049: Switch project on click
+    item.addEventListener('click', async (e) => {
+      if ((e.target as HTMLElement).closest('.sidebar-project-delete')) return
+      if (project.id === currentProjectId) return
+      await switchToProject(project.id)
+    })
+
+    // T051: Double-click to rename
+    nameSpan.addEventListener('dblclick', (e) => {
+      e.stopPropagation()
+      enterRenameMode(item, nameSpan, project)
+    })
+
+    // T050: Delete on click
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      await handleDeleteProject(project)
+    })
+
+    return item
+  }
+
+  // --- T048: New Project button ---
+  function renderNewProjectButton(container: HTMLElement): void {
+    while (container.firstChild) container.removeChild(container.firstChild)
+
+    const btn = document.createElement('button')
+    btn.className = 'sidebar-new-project-btn'
+    btn.textContent = '+ New Project'
+    btn.style.width = '100%'
+    btn.style.border = '1px dashed var(--color-border, #555)'
+    btn.style.background = 'none'
+    btn.style.color = 'var(--color-text-secondary)'
+    btn.style.cursor = 'pointer'
+    btn.style.padding = 'var(--space-1) var(--space-2)'
+    btn.style.borderRadius = 'var(--radius-sm, 4px)'
+    btn.style.fontSize = 'var(--text-sm)'
+    btn.style.textAlign = 'left'
+
+    btn.addEventListener('click', () => {
+      renderNewProjectInput(container)
+    })
+
+    container.appendChild(btn)
+  }
+
+  // --- T048: Inline input for new project name ---
+  function renderNewProjectInput(container: HTMLElement): void {
+    while (container.firstChild) container.removeChild(container.firstChild)
+
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.placeholder = 'Project name...'
+    input.style.width = '100%'
+    input.style.padding = 'var(--space-1) var(--space-2)'
+    input.style.border = '1px solid var(--color-accent, #4a9eff)'
+    input.style.borderRadius = 'var(--radius-sm, 4px)'
+    input.style.background = 'var(--color-surface, #1e1e1e)'
+    input.style.color = 'var(--color-text, #fff)'
+    input.style.fontSize = 'var(--text-sm)'
+    input.style.outline = 'none'
+    input.style.boxSizing = 'border-box'
+
+    let committed = false
+
+    async function commit(): Promise<void> {
+      if (committed) return
+      committed = true
+      const name = input.value.trim()
+      if (!name) {
+        renderNewProjectButton(container)
+        return
+      }
+      await handleCreateProject(name)
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        void commit()
+      } else if (e.key === 'Escape') {
+        committed = true
+        renderNewProjectButton(container)
+      }
+    })
+
+    input.addEventListener('blur', () => {
+      void commit()
+    })
+
+    container.appendChild(input)
+    input.focus()
+  }
+
+  // --- T048: Create project handler ---
+  async function handleCreateProject(name: string): Promise<void> {
+    const project = createProject(name)
+    await createProjectInDB(project)
+
+    // Create default spec artifact with scaffold
+    const content = scaffoldArtifact('spec')
+    const artifact = createArtifact(project.id, 'spec', 'specify', content)
+    await createArtifactInDB(artifact)
+
+    const state = getState()
+    const artifacts = new Map(state.artifacts)
+    artifacts.set(artifact.id, artifact)
+
+    setState({
+      projects: [...state.projects, project],
+      artifacts,
+      currentProjectId: project.id,
+      currentStage: project.currentStage,
+      currentArtifactId: artifact.id,
+    })
+
+    addToast(`Created project "${name}"`, 'success')
+  }
+
+  // --- T049: Switch project handler ---
+  async function switchToProject(projectId: string): Promise<void> {
+    await flushAll()
+
+    const projectArtifacts = await getArtifactsByProject(projectId)
+    const state = getState()
+    const artifacts = new Map(state.artifacts)
+
+    // Ensure artifacts for this project are loaded
+    for (const a of projectArtifacts) {
+      artifacts.set(a.id, a)
+    }
+
+    const project = state.projects.find(p => p.id === projectId)
+    const firstArtifact = projectArtifacts[0] || null
+
+    setState({
+      artifacts,
+      currentProjectId: projectId,
+      currentStage: project?.currentStage || 'specify',
+      currentArtifactId: firstArtifact?.id || null,
+    })
+  }
+
+  // --- T050: Delete project handler ---
+  async function handleDeleteProject(project: Project): Promise<void> {
+    const confirmed = window.confirm(`Delete "${project.name}"?`)
+    if (!confirmed) return
+
+    await deleteProjectFromDB(project.id)
+
+    const state = getState()
+    const newProjects = state.projects.filter(p => p.id !== project.id)
+
+    // Remove artifacts belonging to this project from state
+    const artifacts = new Map(state.artifacts)
+    for (const [id, a] of artifacts) {
+      if (a.projectId === project.id) {
+        artifacts.delete(id)
+      }
+    }
+
+    // If deleted project was current, switch to another or clear
+    let newCurrentProjectId = state.currentProjectId
+    let newCurrentArtifactId = state.currentArtifactId
+    let newCurrentStage: PipelineStage = state.currentStage
+
+    if (state.currentProjectId === project.id) {
+      if (newProjects.length > 0) {
+        const nextProject = newProjects[newProjects.length - 1]
+        newCurrentProjectId = nextProject.id
+        newCurrentStage = nextProject.currentStage
+        const nextArtifacts = [...artifacts.values()].filter(a => a.projectId === nextProject.id)
+        newCurrentArtifactId = nextArtifacts[0]?.id || null
+      } else {
+        newCurrentProjectId = null
+        newCurrentArtifactId = null
+        newCurrentStage = 'specify'
+      }
+    }
+
+    setState({
+      projects: newProjects,
+      artifacts,
+      currentProjectId: newCurrentProjectId,
+      currentArtifactId: newCurrentArtifactId,
+      currentStage: newCurrentStage,
+    })
+
+    addToast(`Deleted project "${project.name}"`, 'info')
+  }
+
+  // --- T051: Rename project (inline edit) ---
+  function enterRenameMode(_item: HTMLElement, nameSpan: HTMLElement, project: Project): void {
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.value = project.name
+    input.style.flex = '1'
+    input.style.padding = '0 var(--space-1)'
+    input.style.border = '1px solid var(--color-accent, #4a9eff)'
+    input.style.borderRadius = 'var(--radius-sm, 4px)'
+    input.style.background = 'var(--color-surface, #1e1e1e)'
+    input.style.color = 'var(--color-text, #fff)'
+    input.style.fontSize = 'var(--text-sm)'
+    input.style.outline = 'none'
+    input.style.minWidth = '0'
+
+    nameSpan.replaceWith(input)
+    input.focus()
+    input.select()
+
+    let committed = false
+
+    async function commit(): Promise<void> {
+      if (committed) return
+      committed = true
+      const newName = input.value.trim()
+      if (newName && newName !== project.name) {
+        project.name = newName
+        await updateProjectInDB(project)
+        const state = getState()
+        const updatedProjects = state.projects.map(p => p.id === project.id ? { ...p, name: newName } : p)
+        setState({ projects: updatedProjects })
+      } else {
+        // Cancel or no change — just re-render
+        input.replaceWith(nameSpan)
+      }
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        void commit()
+      } else if (e.key === 'Escape') {
+        committed = true
+        input.replaceWith(nameSpan)
+      }
+    })
+
+    input.addEventListener('blur', () => {
+      void commit()
+    })
   }
 
   function createStageItem(
