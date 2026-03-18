@@ -144,10 +144,10 @@ export function renderSidebar(container: HTMLElement): void {
       featuresSection.appendChild(featuresHeader)
 
       // Get all spec artifacts for the current project
-      // Only hide if it's truly a pristine untouched template (state is empty AND no conversation happened)
+      // Hide features that are unnamed templates (derived name is "New Feature")
       const specArtifacts = [...state.artifacts.values()].filter(
         a => a.projectId === state.currentProjectId && a.type === 'spec'
-          && !(a.state === 'empty' && deriveFeatureName(a.content) === 'New Feature')
+          && deriveFeatureName(a.content) !== 'New Feature'
       )
 
       // Always show the currently selected artifact (so user can work on it)
