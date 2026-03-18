@@ -18,6 +18,8 @@ export interface Conversation {
   messages: Message[]
   currentFocusSection: string | null
   pipelineStage: string
+  /** T029: Track whether safety-net prompt has fired for this conversation */
+  safetyNetFired?: boolean
   createdAt: string
   updatedAt: string
 }

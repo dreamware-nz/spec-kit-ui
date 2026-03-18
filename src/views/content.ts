@@ -5,6 +5,7 @@ import { markdownToHtml } from '../parsers/markdown-io'
 import { renderSectionCard } from '../editors/section-card'
 import { deriveArtifactState } from '../models/pipeline'
 import { handleSectionFocus } from './chat'
+import { findCrossFeatureEntities, deriveFeatureName } from './feature-tabs'
 import type { Artifact, Section } from '../models/artifact'
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null
@@ -236,6 +237,9 @@ function renderSpecSections(
     leftPane.appendChild(card)
   }
 
+  // T027: Cross-feature entity linking
+  renderCrossFeatureLinks(leftPane, artifact)
+
   // Initial preview — markdownToHtml sanitizes via DOMPurify
   updatePreview(rightPane, artifact.content)
 }
@@ -308,6 +312,62 @@ function handleExport(artifact: Artifact): void {
   URL.revokeObjectURL(url)
 
   addToast('Exported successfully', 'success')
+}
+
+// T027: Cross-feature entity linking
+function renderCrossFeatureLinks(container: HTMLElement, currentArtifact: Artifact): void {
+  const state = getState()
+  if (!state.currentProjectId) return
+
+  const entityMap = findCrossFeatureEntities(state.currentProjectId, state.artifacts)
+  if (entityMap.size === 0) return
+
+  const currentFeatureName = deriveFeatureName(currentArtifact.content)
+
+  // Check if any entities in the current artifact also exist in other features
+  const crossLinks: Array<{ entity: string; otherFeatures: string[] }> = []
+  for (const [entity, features] of entityMap) {
+    if (features.includes(currentFeatureName) && features.length > 1) {
+      const others = features.filter(f => f !== currentFeatureName)
+      crossLinks.push({ entity, otherFeatures: others })
+    }
+  }
+
+  if (crossLinks.length === 0) return
+
+  const linksDiv = document.createElement('div')
+  linksDiv.style.padding = 'var(--space-2) var(--space-3)'
+  linksDiv.style.marginTop = 'var(--space-2)'
+  linksDiv.style.fontSize = 'var(--text-xs)'
+  linksDiv.style.color = 'var(--color-text-secondary)'
+  linksDiv.style.background = 'var(--color-surface)'
+  linksDiv.style.borderRadius = 'var(--radius-sm)'
+  linksDiv.style.border = '1px dashed var(--color-border)'
+
+  const header = document.createElement('div')
+  header.style.fontWeight = '600'
+  header.style.marginBottom = 'var(--space-1)'
+  header.textContent = 'Shared entities:'
+  linksDiv.appendChild(header)
+
+  for (const link of crossLinks) {
+    const item = document.createElement('div')
+    item.style.marginBottom = 'var(--space-1)'
+    item.innerHTML = '' // clear
+    const entitySpan = document.createElement('span')
+    entitySpan.style.fontWeight = '600'
+    entitySpan.textContent = link.entity
+    item.appendChild(entitySpan)
+
+    const alsoIn = document.createElement('span')
+    alsoIn.style.color = 'var(--color-accent)'
+    alsoIn.textContent = ` Also in: ${link.otherFeatures.join(', ')}`
+    item.appendChild(alsoIn)
+
+    linksDiv.appendChild(item)
+  }
+
+  container.appendChild(linksDiv)
 }
 
 // T032: Import
