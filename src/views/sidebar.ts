@@ -20,19 +20,7 @@ const STAGE_DESCRIPTIONS: Record<PipelineStage, string> = {
   tasks: 'Break into actionable work',
 }
 
-const NEXT_STAGE_MAP: Record<PipelineStage, PipelineStage | null> = {
-  specify: 'clarify',
-  clarify: 'plan',
-  plan: 'tasks',
-  tasks: null,
-}
-
-const _NEXT_STAGE_LABELS: Record<PipelineStage, string> = {
-  specify: 'Move to Clarify →',
-  clarify: 'Move to Plan →',
-  plan: 'Move to Tasks →',
-  tasks: '',
-}
+// Stage transition constants removed — button now dynamically finds first incomplete stage
 
 const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
   spec: 'Specification',
