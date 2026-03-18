@@ -320,15 +320,6 @@ async function initChat(): Promise<void> {
 }
 
 /** Get the name of the currently active feature/artifact */
-function getActiveFeatureName(): string | null {
-  const state = getState()
-  if (!state.currentArtifactId) return null
-  const artifact = state.artifacts.get(state.currentArtifactId)
-  if (!artifact || artifact.type !== 'spec') return null
-  const name = deriveFeatureName(artifact.content)
-  return name !== 'Untitled' ? name : null
-}
-
 function handleSend(): void {
   if (!textarea || !sendBtn) return
   const text = textarea.value.trim()
