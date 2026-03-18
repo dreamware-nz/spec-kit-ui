@@ -2,10 +2,11 @@ import { getState, setState, addToast, subscribe } from '../store/state'
 import { flushAll } from '../store/sync'
 import { PIPELINE_STAGES, getStageCompletion } from '../models/pipeline'
 import { STAGE_ARTIFACT_MAP, createArtifact } from '../models/artifact'
-import { createArtifactInDB, createProjectInDB, deleteProject as deleteProjectFromDB, updateProject as updateProjectInDB, getArtifactsByProject } from '../store/db'
+import { createArtifactInDB, createProjectInDB, deleteProject as deleteProjectFromDB, updateProject as updateProjectInDB, getArtifactsByProject, deleteArtifact as deleteArtifactFromDB } from '../store/db'
 import { scaffoldArtifact } from '../parsers/template'
 import { createProject } from '../models/project'
 import { deriveFeatureName } from './feature-tabs'
+import { isSectionFilled } from '../parsers/coverage'
 import { switchChatToFeature, handleStageTransition } from './chat'
 import { parseMarkdownSections } from '../parsers/spec-parser'
 import type { Project, PipelineStage } from '../models/project'
@@ -238,7 +239,7 @@ export function renderSidebar(container: HTMLElement): void {
     // Coverage percentage badge
     const sections = parseMarkdownSections(artifact.content)
     const total = sections.length
-    const filled = sections.filter(s => s.content.trim().length > 20).length
+    const filled = sections.filter(s => isSectionFilled(s.content)).length
     const percent = total > 0 ? Math.round((filled / total) * 100) : 0
 
     const badge = document.createElement('span')
@@ -247,6 +248,48 @@ export function renderSidebar(container: HTMLElement): void {
     badge.style.flexShrink = '0'
     badge.textContent = `${percent}%`
     item.appendChild(badge)
+
+    // Delete button (shown on hover)
+    const deleteBtn = document.createElement('button')
+    deleteBtn.style.border = 'none'
+    deleteBtn.style.background = 'none'
+    deleteBtn.style.color = 'var(--color-text-secondary)'
+    deleteBtn.style.cursor = 'pointer'
+    deleteBtn.style.fontSize = 'var(--text-xs)'
+    deleteBtn.style.padding = '0 var(--space-1)'
+    deleteBtn.style.opacity = '0'
+    deleteBtn.style.transition = 'opacity var(--transition-fast)'
+    deleteBtn.style.flexShrink = '0'
+    deleteBtn.textContent = '×'
+    deleteBtn.title = 'Delete feature'
+    deleteBtn.setAttribute('aria-label', `Delete feature ${featureName}`)
+    item.appendChild(deleteBtn)
+
+    item.addEventListener('mouseenter', () => { deleteBtn.style.opacity = '1' })
+    item.addEventListener('mouseleave', () => { deleteBtn.style.opacity = '0' })
+
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      if (!confirm(`Delete feature "${featureName}"? This cannot be undone.`)) return
+      // Delete the artifact from DB
+      await deleteArtifactFromDB(artifact.id)
+      // Remove from state
+      const state = getState()
+      state.artifacts.delete(artifact.id)
+      // If this was the active feature, switch to another
+      if (state.currentArtifactId === artifact.id) {
+        const remaining = [...state.artifacts.values()].find(
+          a => a.projectId === state.currentProjectId && a.type === 'spec' && a.id !== artifact.id
+        )
+        setState({ currentArtifactId: remaining?.id || null })
+        if (remaining) {
+          await switchChatToFeature(remaining.id)
+        }
+      } else {
+        setState({}) // trigger re-render
+      }
+      addToast(`Deleted feature "${featureName}"`, 'info')
+    })
 
     // Click to switch feature
     item.addEventListener('click', async () => {

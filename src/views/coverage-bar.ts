@@ -1,5 +1,6 @@
 import { getState, setState, subscribe } from '../store/state'
 import { parseMarkdownSections } from '../parsers/spec-parser'
+import { isSectionFilled } from '../parsers/coverage'
 
 export function renderCoverageBar(container: HTMLElement): void {
   const wrapper = document.createElement('div')
@@ -107,7 +108,7 @@ export function renderCoverageBar(container: HTMLElement): void {
 
     const sections = parseMarkdownSections(spec.content)
     const totalSections = sections.length
-    const filledSections = sections.filter(s => s.content.trim().length > 20).length
+    const filledSections = sections.filter(s => isSectionFilled(s.content)).length
     const percent = totalSections > 0 ? Math.round((filledSections / totalSections) * 100) : 0
     fill.style.width = `${percent}%`
     percentLabel.textContent = `Coverage: ${percent}%`
@@ -117,7 +118,7 @@ export function renderCoverageBar(container: HTMLElement): void {
     bar.setAttribute('aria-valuetext', `Coverage: ${percent}%`)
 
     // T032: Show/hide gaps link
-    const uncovered = sections.filter(s => s.content.trim().length <= 20)
+    const uncovered = sections.filter(s => !isSectionFilled(s.content))
     if (uncovered.length > 0 && percent < 100) {
       gapsLink.style.display = ''
 
