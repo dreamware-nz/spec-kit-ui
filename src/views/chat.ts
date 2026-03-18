@@ -157,7 +157,16 @@ export function renderChatPanel(container: HTMLElement): void {
 
   const input = document.createElement('textarea')
   input.className = 'chat-input'
-  input.placeholder = 'Describe your idea...'
+  // Contextual placeholder based on pipeline stage
+  const state = getState()
+  const stage = state.currentStage || 'specify'
+  const placeholders: Record<string, string> = {
+    specify: 'Describe your idea...',
+    clarify: 'Ask a question or clarify a requirement...',
+    plan: 'Discuss technical decisions...',
+    tasks: 'Break features into tasks...',
+  }
+  input.placeholder = placeholders[stage] || 'Type a message...'
   input.rows = 3
   input.setAttribute('aria-label', 'Chat message input')
   textarea = input
