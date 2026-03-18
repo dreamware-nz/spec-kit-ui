@@ -69,7 +69,20 @@
   transition: background var(--transition-fast);
 }
 .pipeline-stage:hover { background: var(--color-surface-hover); }
-.pipeline-stage.active { background: var(--color-surface-hover); font-weight: 600; }
+.pipeline-stage.active {
+  background: var(--color-surface-hover);
+  font-weight: 600;
+  border-left: 3px solid var(--color-accent);
+  padding-left: calc(var(--space-3) - 3px);
+}
+
+.pipeline-move-btn {
+  margin-top: var(--space-2);
+}
+
+.chat-stage-separator {
+  user-select: none;
+}
 
 .pipeline-dot {
   width: 10px;

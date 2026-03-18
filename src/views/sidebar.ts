@@ -6,10 +6,31 @@ import { createArtifactInDB, createProjectInDB, deleteProject as deleteProjectFr
 import { scaffoldArtifact } from '../parsers/template'
 import { createProject } from '../models/project'
 import { deriveFeatureName } from './feature-tabs'
-import { switchChatToFeature } from './chat'
+import { switchChatToFeature, handleStageTransition } from './chat'
 import { parseMarkdownSections } from '../parsers/spec-parser'
 import type { Project, PipelineStage } from '../models/project'
 import type { ArtifactType, Artifact } from '../models/artifact'
+
+const STAGE_DESCRIPTIONS: Record<PipelineStage, string> = {
+  specify: 'Define what you\'re building',
+  clarify: 'Resolve ambiguities',
+  plan: 'Technical architecture & decisions',
+  tasks: 'Break into actionable work',
+}
+
+const NEXT_STAGE_MAP: Record<PipelineStage, PipelineStage | null> = {
+  specify: 'clarify',
+  clarify: 'plan',
+  plan: 'tasks',
+  tasks: null,
+}
+
+const NEXT_STAGE_LABELS: Record<PipelineStage, string> = {
+  specify: 'Move to Clarify →',
+  clarify: 'Move to Plan →',
+  plan: 'Move to Tasks →',
+  tasks: '',
+}
 
 const ARTIFACT_TYPE_LABELS: Record<ArtifactType, string> = {
   spec: 'Specification',
@@ -154,11 +175,25 @@ export function renderSidebar(container: HTMLElement): void {
       const projectArtifacts = [...state.artifacts.values()].filter(a => a.projectId === currentProject.id)
 
       for (const stage of PIPELINE_STAGES) {
-        const stageItem = createStageItem(stage, state.currentStage, projectArtifacts)
+        const stageItem = createStageItem(stage, state.currentStage, projectArtifacts, currentProject)
         nav.appendChild(stageItem)
       }
 
       container.appendChild(nav)
+
+      // --- "Move to Next Stage" button ---
+      const nextStage = NEXT_STAGE_MAP[state.currentStage]
+      if (nextStage) {
+        const moveBtn = document.createElement('button')
+        moveBtn.className = 'btn btn--primary pipeline-move-btn'
+        moveBtn.style.width = '100%'
+        moveBtn.style.marginTop = 'var(--space-2)'
+        moveBtn.textContent = NEXT_STAGE_LABELS[state.currentStage]
+        moveBtn.addEventListener('click', async () => {
+          await performStageTransition(nextStage, currentProject)
+        })
+        container.appendChild(moveBtn)
+      }
     }
 
     // Keyboard navigation
@@ -550,6 +585,7 @@ export function renderSidebar(container: HTMLElement): void {
     stage: PipelineStage,
     activeStage: PipelineStage,
     projectArtifacts: Artifact[],
+    currentProject: Project,
   ): HTMLElement {
     const wrapper = document.createElement('div')
     wrapper.setAttribute('role', 'listitem')
@@ -584,11 +620,25 @@ export function renderSidebar(container: HTMLElement): void {
     }
     btn.appendChild(dot)
 
-    // Stage name
+    // Stage name and description
+    const nameBlock = document.createElement('span')
+    nameBlock.style.flex = '1'
+    nameBlock.style.display = 'flex'
+    nameBlock.style.flexDirection = 'column'
+
     const name = document.createElement('span')
-    name.style.flex = '1'
     name.textContent = stage.charAt(0).toUpperCase() + stage.slice(1)
-    btn.appendChild(name)
+    nameBlock.appendChild(name)
+
+    const desc = document.createElement('span')
+    desc.style.fontSize = 'var(--text-xs)'
+    desc.style.color = 'var(--color-text-secondary)'
+    desc.style.fontWeight = 'normal'
+    desc.style.lineHeight = '1.3'
+    desc.textContent = STAGE_DESCRIPTIONS[stage]
+    nameBlock.appendChild(desc)
+
+    btn.appendChild(nameBlock)
 
     // Artifact count badge
     const stageArtifacts = projectArtifacts.filter(a => a.stage === stage)
@@ -599,15 +649,7 @@ export function renderSidebar(container: HTMLElement): void {
     btn.appendChild(count)
 
     btn.addEventListener('click', async () => {
-      await flushAll() // INV-003: force-save before navigation
-      setState({ currentStage: stage })
-      // Select first artifact of the stage if available
-      const firstArtifact = stageArtifacts[0]
-      if (firstArtifact) {
-        setState({ currentArtifactId: firstArtifact.id })
-      } else {
-        setState({ currentArtifactId: null })
-      }
+      await performStageTransition(stage, currentProject)
     })
 
     wrapper.appendChild(btn)
@@ -687,6 +729,56 @@ export function renderSidebar(container: HTMLElement): void {
     return btn
   }
 
+  /**
+   * Perform a full pipeline stage transition:
+   * 1. Flush current work
+   * 2. Update project.currentStage and save to DB
+   * 3. Create missing primary artifact from template
+   * 4. Set the new artifact as current
+   * 5. Update chat context via handleStageTransition
+   */
+  async function performStageTransition(newStage: PipelineStage, project: Project): Promise<void> {
+    await flushAll()
+
+    // Update project's currentStage and persist
+    project.currentStage = newStage
+    await updateProjectInDB(project)
+
+    // Update the project in state
+    const state = getState()
+    const updatedProjects = state.projects.map(p =>
+      p.id === project.id ? { ...p, currentStage: newStage } : p
+    )
+    setState({ projects: updatedProjects })
+
+    // Get existing artifacts for this stage
+    const stageArtifactTypes = STAGE_ARTIFACT_MAP[newStage]
+    const projectArtifacts = [...state.artifacts.values()].filter(
+      a => a.projectId === project.id
+    )
+    const stageArtifacts = projectArtifacts.filter(a => a.stage === newStage)
+
+    // Create primary artifact if it doesn't exist yet
+    const primaryType = stageArtifactTypes[0]
+    let primaryArtifact = stageArtifacts.find(a => a.type === primaryType)
+
+    if (!primaryArtifact) {
+      const content = scaffoldArtifact(primaryType)
+      primaryArtifact = createArtifact(project.id, primaryType, newStage, content)
+      await createArtifactInDB(primaryArtifact)
+
+      const artifacts = new Map(getState().artifacts)
+      artifacts.set(primaryArtifact.id, primaryArtifact)
+      setState({ artifacts })
+    }
+
+    // Set the primary artifact as current
+    setState({ currentArtifactId: primaryArtifact.id })
+
+    // Update the chat context (separator, toast, conversation pipelineStage)
+    handleStageTransition(newStage)
+  }
+
   async function createArtifactFromTemplate(type: ArtifactType, stage: PipelineStage): Promise<void> {
     const state = getState()
     if (!state.currentProjectId) return
@@ -711,24 +803,26 @@ export function renderSidebar(container: HTMLElement): void {
   function handleKeyboard(e: KeyboardEvent): void {
     const state = getState()
     const currentIndex = PIPELINE_STAGES.indexOf(state.currentStage)
+    const currentProject = state.projects.find(p => p.id === state.currentProjectId)
 
     if (e.key === 'ArrowDown' && currentIndex < PIPELINE_STAGES.length - 1) {
       e.preventDefault()
       const nextStage = PIPELINE_STAGES[currentIndex + 1]
-      void flushAll().then(() => {
-        setState({ currentStage: nextStage })
-        // Focus the new stage button
-        const nextBtn = container.querySelector(`[data-stage="${nextStage}"]`) as HTMLElement
-        nextBtn?.focus()
-      })
+      if (currentProject) {
+        void performStageTransition(nextStage, currentProject).then(() => {
+          const nextBtn = container.querySelector(`[data-stage="${nextStage}"]`) as HTMLElement
+          nextBtn?.focus()
+        })
+      }
     } else if (e.key === 'ArrowUp' && currentIndex > 0) {
       e.preventDefault()
       const prevStage = PIPELINE_STAGES[currentIndex - 1]
-      void flushAll().then(() => {
-        setState({ currentStage: prevStage })
-        const prevBtn = container.querySelector(`[data-stage="${prevStage}"]`) as HTMLElement
-        prevBtn?.focus()
-      })
+      if (currentProject) {
+        void performStageTransition(prevStage, currentProject).then(() => {
+          const prevBtn = container.querySelector(`[data-stage="${prevStage}"]`) as HTMLElement
+          prevBtn?.focus()
+        })
+      }
     } else if (e.key === 'Enter') {
       // Enter activates the focused stage
       const focused = document.activeElement as HTMLElement

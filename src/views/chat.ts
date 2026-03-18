@@ -1,4 +1,4 @@
-import { getState, setState, subscribe } from '../store/state'
+import { getState, setState, addToast, subscribe } from '../store/state'
 import { markDirty, markConversationDirty, flushConversationNow } from '../store/sync'
 import { sendMessage, abortStream } from '../llm/client'
 import { buildSystemPrompt } from '../llm/system-prompt'
@@ -723,14 +723,23 @@ function appendErrorMessage(errorText: string): void {
 // --- T033: Pipeline stage transition ---
 
 export function transitionToStage(stage: import('../models/project').PipelineStage): void {
+  handleStageTransition(stage)
+}
+
+/**
+ * Handle a pipeline stage transition in the chat context.
+ * Adds a visual separator, updates conversation pipelineStage, and shows a toast.
+ */
+export function handleStageTransition(stage: import('../models/project').PipelineStage): void {
   const state = getState()
-  if (!state.conversation) return
 
-  // Update conversation pipeline stage
-  state.conversation.pipelineStage = stage
-  markConversationDirty()
+  // Update conversation pipeline stage if conversation exists
+  if (state.conversation) {
+    state.conversation.pipelineStage = stage
+    markConversationDirty()
+  }
 
-  // Update project current stage
+  // Update app state
   setState({ currentStage: stage })
 
   // Find or set the appropriate artifact for the new stage
@@ -743,9 +752,11 @@ export function transitionToStage(stage: import('../models/project').PipelineSta
     }
   }
 
-  // Add a visual separator
+  // Add a visual separator in the chat
+  const stageLabel = stage.charAt(0).toUpperCase() + stage.slice(1)
   if (messageList) {
     const separator = document.createElement('div')
+    separator.className = 'chat-stage-separator'
     separator.style.fontSize = 'var(--text-xs)'
     separator.style.color = 'var(--color-accent)'
     separator.style.textAlign = 'center'
@@ -753,10 +764,13 @@ export function transitionToStage(stage: import('../models/project').PipelineSta
     separator.style.borderTop = '1px dashed var(--color-border)'
     separator.style.borderBottom = '1px dashed var(--color-border)'
     separator.style.margin = 'var(--space-2) 0'
-    separator.textContent = `Transitioned to: ${stage.charAt(0).toUpperCase() + stage.slice(1)} stage`
+    separator.textContent = `--- Moved to ${stageLabel} ---`
     messageList.appendChild(separator)
     scrollToBottom()
   }
+
+  // Show toast
+  addToast(`Switched to ${stageLabel} stage`, 'info')
 }
 
 // --- Helpers ---
