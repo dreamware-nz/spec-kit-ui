@@ -9,11 +9,14 @@ import { getState, setState, subscribe, addToast } from './store/state'
 import { startAutoSave } from './store/sync'
 import { renderShell } from './views/shell'
 import { renderEmptyState } from './views/empty-state'
-import { renderContentPanel } from './views/content'
+import { renderDiscoveryLayout } from './views/discovery-layout'
 import { renderSidebar } from './views/sidebar'
 import { renderToasts } from './views/toast'
 import { initKeyboardNav } from './views/keyboard'
 import { initCommandPalette } from './views/command-palette'
+import { hasApiKey } from './llm/config'
+import { renderApiKeyModal } from './views/api-key-modal'
+import { getConversationByProject } from './store/db'
 import type { Artifact } from './models/artifact'
 
 /** T055: Show skeleton loading placeholders while DB initializes */
@@ -103,14 +106,35 @@ async function init(): Promise<void> {
       }
     }
 
+    // T022: Restore conversation if project exists
+    const currentState = getState()
+    if (currentState.currentProjectId) {
+      const existingConversation = await getConversationByProject(currentState.currentProjectId)
+      if (existingConversation) {
+        setState({ conversation: existingConversation })
+      }
+    }
+
     // Remove skeleton and render real UI
     removeSkeletonLoading(app)
 
     // Render shell
     const { sidebar, content } = renderShell(app)
 
-    // Render main content area
-    renderMainContent(content)
+    // Render main content area — with API key gate for discovery
+    function launchDiscovery(): void {
+      renderMainContent(content)
+    }
+
+    if (!hasApiKey()) {
+      renderApiKeyModal(app, () => {
+        launchDiscovery()
+      })
+      // Still render sidebar and empty content in the background
+      renderMainContent(content)
+    } else {
+      launchDiscovery()
+    }
 
     // Subscribe to state changes that require content re-routing
     let lastProjectId = getState().currentProjectId
@@ -184,7 +208,7 @@ function renderMainContent(content: HTMLElement): void {
   if (state.projects.length === 0) {
     renderEmptyState(content)
   } else {
-    renderContentPanel(content)
+    renderDiscoveryLayout(content)
   }
 }
 

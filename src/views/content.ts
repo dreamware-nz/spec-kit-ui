@@ -4,6 +4,7 @@ import { parseMarkdownSections, parseSectionsToMarkdown } from '../parsers/spec-
 import { markdownToHtml } from '../parsers/markdown-io'
 import { renderSectionCard } from '../editors/section-card'
 import { deriveArtifactState } from '../models/pipeline'
+import { handleSectionFocus } from './chat'
 import type { Artifact, Section } from '../models/artifact'
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null
@@ -214,6 +215,22 @@ function renderSpecSections(
 
         markDirty(artifact.id)
       })
+    }
+
+    // T018: Section click-to-focus
+    const headerEl = card.querySelector('.section-card-header') as HTMLElement
+    if (headerEl) {
+      headerEl.addEventListener('dblclick', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        handleSectionFocus(sections[i].title)
+      })
+    }
+
+    // T018: Apply focused class if this section is focused
+    const state = getState()
+    if (state.focusSection && sections[i].title.toLowerCase().includes(state.focusSection.toLowerCase())) {
+      card.classList.add('section-card--focused')
     }
 
     leftPane.appendChild(card)
