@@ -880,8 +880,16 @@ export function handleStageTransition(stage: import('../models/project').Pipelin
     tasks: 'We\'re now in the Tasks stage. Break the plan into actionable, ordered tasks that a developer could pick up and implement.',
   }
 
+  // Only auto-prompt if the stage's primary artifact is empty (not yet created)
+  const state = getState()
+  const stageArtifactTypes: Record<string, string> = { clarify: 'spec', plan: 'plan', tasks: 'tasks' }
+  const targetType = stageArtifactTypes[stage]
+  const existingArtifact = targetType
+    ? [...state.artifacts.values()].find(a => a.projectId === state.currentProjectId && a.type === targetType && a.state !== 'empty' && a.content)
+    : null
+
   const autoPrompt = stagePrompts[stage]
-  if (autoPrompt) {
+  if (autoPrompt && !existingArtifact) {
     // Small delay so the UI settles before sending
     setTimeout(() => sendUserMessage(autoPrompt), 300)
   }
