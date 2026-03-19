@@ -881,11 +881,11 @@ export function handleStageTransition(stage: import('../models/project').Pipelin
   }
 
   // Only auto-prompt if the stage's primary artifact is empty (not yet created)
-  const state = getState()
+  const currentState = getState()
   const stageArtifactTypes: Record<string, string> = { clarify: 'spec', plan: 'plan', tasks: 'tasks' }
   const targetType = stageArtifactTypes[stage]
   const existingArtifact = targetType
-    ? [...state.artifacts.values()].find(a => a.projectId === state.currentProjectId && a.type === targetType && a.state !== 'empty' && a.content)
+    ? [...currentState.artifacts.values()].find(a => a.projectId === currentState.currentProjectId && a.type === targetType && a.state !== 'empty' && a.content)
     : null
 
   const autoPrompt = stagePrompts[stage]
