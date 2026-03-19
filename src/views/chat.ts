@@ -14,6 +14,7 @@ import { createArtifact } from '../models/artifact'
 import { createProjectInDB, createArtifactInDB, getConversationByArtifact, saveConversation } from '../store/db'
 import { renderApiKeyModal } from './api-key-modal'
 import { deriveFeatureName, gatherAllGlossaryTerms, findCrossFeatureEntities } from './feature-tabs'
+import { isTemplateOnly } from '../parsers/coverage'
 
 const WELCOME_MESSAGE = "Welcome! Let's start by understanding your product.\n\n**Tell me:**\n- What are you building?\n- Who is it for?\n- What problem does it solve?\n\nOnce I understand the big picture, I'll help you break it into features and we'll spec them out one by one."
 
@@ -880,16 +881,17 @@ export function handleStageTransition(stage: import('../models/project').Pipelin
     tasks: 'We\'re now in the Tasks stage. Break the plan into actionable, ordered tasks that a developer could pick up and implement.',
   }
 
-  // Only auto-prompt if the stage's primary artifact is empty (not yet created)
+  // Only auto-prompt if the stage's primary artifact has no real content (template-only or missing)
   const currentState = getState()
   const stageArtifactTypes: Record<string, string> = { clarify: 'spec', plan: 'plan', tasks: 'tasks' }
   const targetType = stageArtifactTypes[stage]
   const existingArtifact = targetType
-    ? [...currentState.artifacts.values()].find(a => a.projectId === currentState.currentProjectId && a.type === targetType && a.state !== 'empty' && a.content)
+    ? [...currentState.artifacts.values()].find(a => a.projectId === currentState.currentProjectId && a.type === targetType)
     : null
+  const hasRealContent = existingArtifact && !isTemplateOnly(existingArtifact.content)
 
   const autoPrompt = stagePrompts[stage]
-  if (autoPrompt && !existingArtifact) {
+  if (autoPrompt && !hasRealContent) {
     // Small delay so the UI settles before sending
     setTimeout(() => sendUserMessage(autoPrompt), 300)
   }

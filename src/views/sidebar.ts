@@ -6,7 +6,7 @@ import { createArtifactInDB, createProjectInDB, deleteProject as deleteProjectFr
 import { scaffoldArtifact } from '../parsers/template'
 import { createProject } from '../models/project'
 import { deriveFeatureName } from './feature-tabs'
-import { isSectionFilled } from '../parsers/coverage'
+import { isSectionFilled, isTemplateOnly } from '../parsers/coverage'
 import { switchChatToFeature, handleStageTransition } from './chat'
 import { parseMarkdownSections } from '../parsers/spec-parser'
 import { exportSpecAsPdf } from './pdf-export'
@@ -191,19 +191,19 @@ export function renderSidebar(container: HTMLElement): void {
       function isStageComplete(s: PipelineStage): boolean {
         if (s === 'specify') {
           const spec = featureArtifactList.find(a => a.type === 'spec')
-          return !!spec && (spec.state === 'complete' || spec.state === 'draft')
+          return !!spec && !isTemplateOnly(spec.content)
         }
         if (s === 'clarify') {
           const spec = featureArtifactList.find(a => a.type === 'spec')
-          return !!spec && !!spec.content && !/\[NEEDS CLARIFICATION/i.test(spec.content) && spec.state !== 'empty'
+          return !!spec && !isTemplateOnly(spec.content) && !/\[NEEDS CLARIFICATION/i.test(spec.content)
         }
         if (s === 'plan') {
           const plan = featureArtifactList.find(a => a.type === 'plan')
-          return !!plan && !!plan.content && plan.state !== 'empty'
+          return !!plan && !isTemplateOnly(plan.content)
         }
         if (s === 'tasks') {
           const tasks = featureArtifactList.find(a => a.type === 'tasks')
-          return !!tasks && !!tasks.content && tasks.state !== 'empty'
+          return !!tasks && !isTemplateOnly(tasks.content)
         }
         return false
       }
@@ -718,19 +718,15 @@ export function renderSidebar(container: HTMLElement): void {
           stageIsComplete = specArtifact.state === 'complete' || specArtifact.state === 'draft'
         }
       }
-      // Special case: Plan is "complete" if plan.md exists with real content
+      // Special case: Plan is "complete" if plan.md has real (non-template) content
       if (stage === 'plan') {
         const planArtifact = projectArtifacts.find(a => a.type === 'plan')
-        if (planArtifact && planArtifact.content && planArtifact.state !== 'empty') {
-          stageIsComplete = true
-        }
+        stageIsComplete = !!planArtifact && !isTemplateOnly(planArtifact.content)
       }
-      // Special case: Tasks is "complete" if tasks.md exists with real content
+      // Special case: Tasks is "complete" if tasks.md has real (non-template) content
       if (stage === 'tasks') {
         const tasksArtifact = projectArtifacts.find(a => a.type === 'tasks')
-        if (tasksArtifact && tasksArtifact.content && tasksArtifact.state !== 'empty') {
-          stageIsComplete = true
-        }
+        stageIsComplete = !!tasksArtifact && !isTemplateOnly(tasksArtifact.content)
       }
 
       if (stageIsComplete) {
