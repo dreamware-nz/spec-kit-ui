@@ -572,7 +572,14 @@ function applySpecUpdate(update: SpecUpdate): void {
   const pipelineStage = state.conversation?.pipelineStage || state.currentStage
 
   // T035: Route to correct artifact based on current stage
-  const artifact = pipelineStage === 'plan' ? getPlanArtifact() : getSpecArtifact()
+  let artifact
+  if (pipelineStage === 'plan') {
+    artifact = getPlanArtifact()
+  } else if (pipelineStage === 'tasks') {
+    artifact = getTasksArtifact()
+  } else {
+    artifact = getSpecArtifact()
+  }
   if (!artifact) return
 
   const sections = parseMarkdownSections(artifact.content)
@@ -926,6 +933,14 @@ function getPlanArtifact() {
   if (!state.currentProjectId) return null
   return [...state.artifacts.values()].find(
     a => a.projectId === state.currentProjectId && a.type === 'plan'
+  ) || null
+}
+
+function getTasksArtifact() {
+  const state = getState()
+  if (!state.currentProjectId) return null
+  return [...state.artifacts.values()].find(
+    a => a.projectId === state.currentProjectId && a.type === 'tasks'
   ) || null
 }
 
